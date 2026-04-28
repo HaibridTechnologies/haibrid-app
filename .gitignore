@@ -3,9 +3,10 @@ dist/
 .DS_Store
 *.local
 
-# Secrets
+# Secrets — keep .env.example tracked
 .env
-.env.*
+.env.local
+.env.*.local
 
 # Logs
 packages/app/logs/
