@@ -1,0 +1,30 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+
+# Secrets
+.env
+.env.*
+
+# Logs
+packages/app/logs/
+
+# App data files (runtime, not source)
+packages/app/links.json
+packages/app/tasks.json
+packages/app/projects.json
+packages/app/projects-index.json
+packages/app/visits.json
+packages/app/visits-pending.json
+packages/app/visit-filters.json
+packages/app/feedback.json
+packages/app/content/
+packages/app/pdfs/
+
+# Python
+packages/research/.venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.ipynb_checkpoints/

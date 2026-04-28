@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "vite",
+      "runtimeExecutable": "/usr/local/bin/node",
+      "runtimeArgs": ["node_modules/.bin/vite", "packages/app", "--port", "5174"],
+      "port": 5174
+    },
+    {
+      "name": "server",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "server", "--workspace=packages/app"],
+      "port": 3000
+    }
+  ]
+}

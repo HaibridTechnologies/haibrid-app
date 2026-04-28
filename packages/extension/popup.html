@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Haibrid</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <svg class="logo" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M5 3a2 2 0 00-2 2v12l7-3 7 3V5a2 2 0 00-2-2H5z" fill="var(--accent)"/>
+      </svg>
+      <h1>Haibrid</h1>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="save">Save</button>
+      <button class="tab" data-tab="list">Unread</button>
+      <button class="tab" data-tab="chat">Chat</button>
+    </nav>
+
+    <!-- Save tab -->
+    <div id="tab-save" class="tab-panel">
+      <div id="save-form">
+        <div class="field">
+          <label for="title">Title</label>
+          <input id="title" type="text" placeholder="Page title" autocomplete="off" />
+        </div>
+
+        <div class="field">
+          <label for="url">URL</label>
+          <input id="url" type="url" placeholder="https://..." autocomplete="off" readonly />
+        </div>
+
+        <div class="field">
+          <label for="notes">Notes <span class="optional">(optional)</span></label>
+          <input id="notes" type="text" placeholder="Add a note…" autocomplete="off" />
+        </div>
+
+        <div class="field project-field">
+          <label>Projects <span class="optional">(optional)</span></label>
+          <div id="tag-input-wrap" class="tag-input-wrap">
+            <div id="chips" class="chips"></div>
+            <input
+              id="project-search"
+              class="tag-search"
+              type="text"
+              placeholder="Add to project…"
+              autocomplete="off"
+            />
+          </div>
+          <div id="project-dropdown" class="project-dropdown" hidden></div>
+        </div>
+
+        <button id="save-btn">Save to Haibrid</button>
+      </div>
+
+      <div id="existing-actions" hidden>
+
+        <!-- Mark as read CTA — only shown when link is unread -->
+        <button id="mark-read-cta" class="mark-read-cta" title="Mark this page as read">
+          <span class="mark-read-circle">
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M5 10.5l3.5 3.5 6.5-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span class="mark-read-label">Mark as read</span>
+        </button>
+
+        <div class="field">
+          <label for="existing-title">Title</label>
+          <div class="rename-row">
+            <input id="existing-title" type="text" autocomplete="off" />
+            <button id="rename-btn" class="btn-icon" title="Save title" hidden>✓</button>
+          </div>
+        </div>
+        <div class="field project-field">
+          <label>Projects</label>
+          <div id="existing-tag-wrap" class="tag-input-wrap">
+            <div id="existing-chips" class="chips"></div>
+            <input
+              id="existing-project-search"
+              class="tag-search"
+              type="text"
+              placeholder="Add to project…"
+              autocomplete="off"
+            />
+          </div>
+          <div id="existing-project-dropdown" class="project-dropdown" hidden></div>
+        </div>
+        <button id="save-content-btn" class="btn-secondary">Save Page Content</button>
+        <button id="mark-read-btn" class="btn-secondary" hidden>Mark as Unread</button>
+        <button id="remove-btn" class="btn-danger">Remove from List</button>
+      </div>
+
+      <div id="status" class="status" hidden></div>
+    </div>
+
+    <!-- Unread tab -->
+    <div id="tab-list" class="tab-panel" hidden>
+      <div id="unread-list"></div>
+    </div>
+
+    <!-- Chat tab -->
+    <div id="tab-chat" class="tab-panel chat-panel" hidden>
+
+      <!-- Context banner — changes based on what's available -->
+      <div id="chat-context-banner" class="chat-context-banner"></div>
+
+      <!-- Message history -->
+      <div id="chat-messages" class="chat-messages"></div>
+
+      <!-- Input row -->
+      <div class="chat-input-row">
+        <textarea
+          id="chat-input"
+          class="chat-input"
+          placeholder="Ask anything…"
+          rows="2"
+          autocomplete="off"
+        ></textarea>
+        <button id="chat-send" class="chat-send-btn" title="Send (Enter)">↑</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Popup-level snackbar -->
+  <div id="popup-snackbar" class="popup-snackbar" hidden>
+    <span id="popup-snackbar-msg"></span>
+    <button id="popup-snackbar-undo" class="snackbar-undo-btn">Undo</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

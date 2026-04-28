@@ -1,0 +1,14 @@
+{
+  "name": "links-app-workspace",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev":   "npm run dev   --workspace=packages/app",
+    "build": "npm run build --workspace=packages/app",
+    "start": "npm run start --workspace=packages/app",
+    "icons": "npm run icons --workspace=packages/extension",
+    "notebook": "cd packages/research && .venv/bin/jupyter lab notebooks/ --notebook-dir=notebooks"
+  }
+}

@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "haibrid-research"
+version = "0.1.0"
+description = "Research and prompt optimisation experiments for Haibrid"
+requires-python = ">=3.11"
+dependencies = [
+    # Notebook environment
+    "jupyter>=1.1",
+    "jupyterlab>=4.3",
+
+    # Data
+    "pandas>=2.2",
+
+    # AI / prompt optimisation
+    "anthropic>=0.40",
+    "dspy>=2.5",
+
+    # Utilities
+    "python-dotenv>=1.0",
+    "tqdm>=4.67",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ipykernel>=6.29",
+    "black>=24.0",
+    "ruff>=0.8",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["research*"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

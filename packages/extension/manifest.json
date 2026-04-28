@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Reading List",
+  "version": "1.0.0",
+  "description": "Save the current page to your Reading List",
+  "permissions": ["activeTab", "tabs", "scripting", "storage", "windows", "contextMenus"],
+  "host_permissions": ["http://localhost:3000/*", "<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Save to Reading List",
+    "default_icon": "icons/favicon.png"
+  },
+  "icons": {
+    "128": "icons/favicon.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src http://localhost:3000;"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "@links-app/extension",
+  "version": "1.0.0",
+  "description": "Browser extension for the Reading List app",
+  "scripts": {
+    "icons": "node scripts/generate-icons.js"
+  }
+}
