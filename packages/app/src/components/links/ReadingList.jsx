@@ -23,7 +23,7 @@ import Snackbar from '../Snackbar'
  *
  * @param {Object|null} project - Project context; null for the reading list
  */
-export default function ReadingList({ project = null, actionsRef = null }) {
+export default function ReadingList({ project = null }) {
   // Derive the mode from the project prop so useLinks fetches the right subset
   const mode = project
     ? (project.id === 'unassigned' ? 'unassigned' : 'project')
@@ -68,15 +68,6 @@ export default function ReadingList({ project = null, actionsRef = null }) {
     getProjects().then(setAllProjects).catch(() => {})
   }, [])
 
-  // Register import/select triggers so AppNav can invoke them
-  useEffect(() => {
-    if (actionsRef) {
-      actionsRef.current = {
-        triggerImport: () => importInputRef.current?.click(),
-        enterSelect,
-      }
-    }
-  })
 
   const isUnassigned = project?.id === 'unassigned'
 
@@ -113,6 +104,13 @@ export default function ReadingList({ project = null, actionsRef = null }) {
       const text = await file.text()
       const data = JSON.parse(text)
       const payload = Array.isArray(data) ? { links: data } : data
+      // Tag imported links with the current project when importing from a project view
+      if (project?.id && project.id !== 'unassigned') {
+        payload.links = payload.links.map(l => ({
+          ...l,
+          projects: [project.id],
+        }))
+      }
       const { added, skipped } = await importLinks(payload)
       showSnackbar({ message: `Imported ${added} link${added !== 1 ? 's' : ''}${skipped ? ` (${skipped} skipped — already saved)` : ''}` })
       reload()
@@ -138,6 +136,8 @@ export default function ReadingList({ project = null, actionsRef = null }) {
         readOnly={isUnassigned}
         readFilter={mode === 'reading-list' ? readFilter : null}
         onReadFilterChange={setReadFilter}
+        onImport={() => importInputRef.current?.click()}
+        onEnterSelect={enterSelect}
       />
       <main>
         <div className="list-count">

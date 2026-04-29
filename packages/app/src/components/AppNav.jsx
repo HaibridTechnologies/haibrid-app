@@ -5,9 +5,7 @@ const TABS = [
   { key: 'tracking', label: 'Tracking' },
 ]
 
-export default function AppNav({ activeTab, setActiveTab, activeProject, onBackToProjects, onImport, onEnterSelect }) {
-  const showActions = activeTab === 'links' || (activeTab === 'projects' && activeProject)
-
+export default function AppNav({ activeTab, setActiveTab, activeProject, onBackToProjects }) {
   return (
     <nav className="app-nav">
       <img src="/haibrid-logo.png" alt="Haibrid" className="app-nav-logo" />
@@ -38,17 +36,6 @@ export default function AppNav({ activeTab, setActiveTab, activeProject, onBackT
           ))
         )}
       </div>
-
-      {showActions && (
-        <div className="app-nav-actions">
-          <button className="btn-ghost btn-sm" onClick={onImport} title="Import links from a JSON file">
-            Import
-          </button>
-          <button className="btn-ghost btn-sm" onClick={onEnterSelect} title="Select links to export">
-            Export
-          </button>
-        </div>
-      )}
     </nav>
   )
 }

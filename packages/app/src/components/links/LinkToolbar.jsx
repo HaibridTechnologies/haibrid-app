@@ -24,7 +24,7 @@ const READ_FILTERS = [
   { value: 'read',   label: 'Read' },
 ]
 
-export default function LinkToolbar({ isAdding, onAdd, onSearchChange, project = null, readOnly = false, readFilter = null, onReadFilterChange }) {
+export default function LinkToolbar({ isAdding, onAdd, onSearchChange, project = null, readOnly = false, readFilter = null, onReadFilterChange, onImport, onEnterSelect }) {
   const [url, setUrl]                   = useState('')
   const [notes, setNotes]               = useState('')
   const [selectedProjects, setSelected] = useState(project ? [project.id] : [])
@@ -59,6 +59,16 @@ export default function LinkToolbar({ isAdding, onAdd, onSearchChange, project =
               </button>
             ))}
           </div>
+        )}
+        {project && project.id !== 'unassigned' && (
+          <>
+            <button className="btn-ghost btn-sm" onClick={onImport} title="Import links into this project">
+              Import
+            </button>
+            <button className="btn-ghost btn-sm" onClick={onEnterSelect} title="Select links to export">
+              Export
+            </button>
+          </>
         )}
       </div>
 
