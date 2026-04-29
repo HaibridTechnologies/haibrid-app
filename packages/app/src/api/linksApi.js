@@ -80,6 +80,18 @@ export const importLinks = (data) =>
     body:    JSON.stringify(data),
   })
 
+/** Add a comment to a link. Returns the updated link. */
+export const addComment = (id, text) =>
+  request(`/api/links/${id}/comments`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ text }),
+  })
+
+/** Delete a comment from a link. */
+export const deleteComment = (linkId, commentId) =>
+  request(`/api/links/${linkId}/comments/${commentId}`, { method: 'DELETE' })
+
 /** Replace the full project list for a link and sync the inverted index. */
 export const updateLinkProjects = (id, projects) =>
   request(`/api/links/${id}/projects`, {

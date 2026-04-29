@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useLinks } from '../../hooks/useLinks'
 import { useSnackbar } from '../../hooks/useSnackbar'
+import { useImport } from '../../hooks/useImport'
 import { getProjects } from '../../api/projectsApi'
-import { exportSelectedLinks, importLinks } from '../../api/linksApi'
+import { exportSelectedLinks } from '../../api/linksApi'
 import LinkToolbar from './LinkToolbar'
 import LinkItem from './LinkItem'
 import LinkModal from './LinkModal'
@@ -42,7 +43,8 @@ export default function ReadingList({ project = null }) {
   const [allProjects, setAllProjects]   = useState([])
   const [selectMode, setSelectMode]     = useState(false)
   const [selectedIds, setSelectedIds]   = useState(new Set())
-  const importInputRef = useRef(null)
+
+  const { importInputRef, triggerImport, handleFileChange } = useImport({ project, showSnackbar, reload })
 
   const enterSelect  = () => { setSelectMode(true); setSelectedIds(new Set()) }
   const exitSelect   = () => { setSelectMode(false); setSelectedIds(new Set()) }
@@ -96,33 +98,6 @@ export default function ReadingList({ project = null }) {
     })
   }
 
-  const handleImportFile = async (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-    e.target.value = ''
-    try {
-      const text = await file.text()
-      const data = JSON.parse(text)
-      const payload = Array.isArray(data) ? { links: data } : data
-      // Tag imported links with the current project when importing from a project view
-      if (project?.id && project.id !== 'unassigned') {
-        payload.links = payload.links.map(l => ({
-          ...l,
-          projects: [project.id],
-        }))
-      }
-      const { added, tagged, skipped } = await importLinks(payload)
-      const parts = []
-      if (added)  parts.push(`${added} added`)
-      if (tagged) parts.push(`${tagged} tagged with project`)
-      if (skipped && !added && !tagged) parts.push(`${skipped} already up to date`)
-      showSnackbar({ message: `Import complete — ${parts.join(', ') || 'nothing changed'}` })
-      reload()
-    } catch {
-      showSnackbar({ message: 'Import failed — invalid file' })
-    }
-  }
-
   return (
     <>
       <input
@@ -130,7 +105,7 @@ export default function ReadingList({ project = null }) {
         type="file"
         accept=".json,application/json"
         style={{ display: 'none' }}
-        onChange={handleImportFile}
+        onChange={handleFileChange}
       />
       <LinkToolbar
         isAdding={isAdding}
@@ -140,7 +115,7 @@ export default function ReadingList({ project = null }) {
         readOnly={isUnassigned}
         readFilter={mode === 'reading-list' ? readFilter : null}
         onReadFilterChange={setReadFilter}
-        onImport={() => importInputRef.current?.click()}
+        onImport={triggerImport}
         onEnterSelect={enterSelect}
       />
       <main>

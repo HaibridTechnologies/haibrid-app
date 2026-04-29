@@ -703,3 +703,56 @@ button:disabled { opacity: 0.55; cursor: default; box-shadow: none; }
 }
 .chat-send-btn:hover   { background: var(--accent-hover); box-shadow: none; }
 .chat-send-btn:disabled { opacity: 0.45; cursor: default; }
+
+/* ── Comments ─────────────────────────────────────────────── */
+.comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.comments-empty {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 2px 0 6px;
+}
+.comment-item {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.comment-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+.comment-date {
+  font-size: 11px;
+  color: var(--muted-light);
+}
+.comment-delete {
+  all: unset;
+  font-size: 14px;
+  color: var(--muted-light);
+  cursor: pointer;
+  line-height: 1;
+  transition: color 0.12s;
+}
+.comment-delete:hover { color: var(--danger); }
+.comment-text {
+  font-size: 12px;
+  color: var(--text-2);
+  margin: 0;
+  white-space: pre-wrap;
+}
+.comment-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.comment-form input {
+  flex: 1;
+  margin: 0;
+}

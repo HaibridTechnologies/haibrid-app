@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { getLink, updateLinkTitle, refreshCitations } from '../../api/linksApi'
+import { getLink, updateLinkTitle, refreshCitations, addComment, deleteComment } from '../../api/linksApi'
 import { getContent, saveContent } from '../../api/contentApi'
 import { getFeedback } from '../../api/visitsApi'
 import { fmtDate } from '../../utils/date'
@@ -36,7 +36,10 @@ export default function LinkModal({ link: initialLink, onClose, onLinkUpdated })
   const [feedbackOpen, setFeedbackOpen]     = useState(false)
   const [editingTitle, setEditingTitle]     = useState(false)
   const [titleDraft,   setTitleDraft]       = useState(initialLink.title)
+  const [commentDraft, setCommentDraft]     = useState('')
+  const [commentSaving, setCommentSaving]   = useState(false)
   const titleInputRef                       = useRef(null)
+  const commentInputRef                     = useRef(null)
   const pollRef                             = useRef(null)
 
   // Auto-fetch citation count on open for arxiv links that don't have one yet
@@ -147,6 +150,25 @@ export default function LinkModal({ link: initialLink, onClose, onLinkUpdated })
     setSaving(false)
   }
 
+  const handleAddComment = async () => {
+    const text = commentDraft.trim()
+    if (!text) return
+    setCommentSaving(true)
+    try {
+      const updated = await addComment(link.id, text)
+      updateLink(updated)
+      setCommentDraft('')
+    } catch {}
+    setCommentSaving(false)
+  }
+
+  const handleDeleteComment = async (commentId) => {
+    try {
+      await deleteComment(link.id, commentId)
+      updateLink({ ...link, comments: (link.comments || []).filter(c => c.id !== commentId) })
+    } catch {}
+  }
+
   const hasPdf  = Boolean(link.pdfFile)
   const showTabs = link.contentStatus === 'parsed' && hasPdf
 
@@ -233,6 +255,47 @@ export default function LinkModal({ link: initialLink, onClose, onLinkUpdated })
                 )}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* ── User comments ───────────────────────────────────────── */}
+        <div className="link-modal-comments">
+          <div className="link-modal-section-label">Comments</div>
+          {(link.comments || []).length === 0 && (
+            <p className="link-modal-comments-empty">No comments yet.</p>
+          )}
+          {(link.comments || []).map(c => (
+            <div key={c.id} className="link-modal-comment">
+              <div className="link-modal-comment-header">
+                <span className="link-modal-comment-date">{fmtDate(c.createdAt)}</span>
+                <button
+                  className="link-modal-comment-delete"
+                  onClick={() => handleDeleteComment(c.id)}
+                  title="Delete comment"
+                >
+                  ×
+                </button>
+              </div>
+              <p className="link-modal-comment-text">{c.text}</p>
+            </div>
+          ))}
+          <div className="link-modal-comment-form">
+            <input
+              ref={commentInputRef}
+              className="link-modal-comment-input"
+              type="text"
+              placeholder="Add a comment…"
+              value={commentDraft}
+              onChange={e => setCommentDraft(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAddComment()}
+            />
+            <button
+              className="primary btn-sm"
+              onClick={handleAddComment}
+              disabled={commentSaving || !commentDraft.trim()}
+            >
+              {commentSaving ? '…' : 'Add'}
+            </button>
           </div>
         </div>
 

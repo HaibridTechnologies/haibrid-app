@@ -3,9 +3,12 @@
 /**
  * Content script — injected into every page.
  *
- * If the current URL is saved in the reading list and is unread, injects a
- * floating "Mark as read" chip at the bottom-right of the page.
- * Clicking it marks the link as read via the API and shows a brief undo toast.
+ * Responsibilities:
+ *  1. If the current URL is saved and unread, inject a floating "Mark as read" chip.
+ *  2. If the link has user comments, inject draggable sticky notes.
+ *     - A toggle button (bottom-left) shows/hides all notes.
+ *     - Shown/hidden state and per-note positions are persisted in chrome.storage.local.
+ *     - Default: shown when comments exist.
  */
 
 const API_BASE = 'http://localhost:3000/api/links';
@@ -27,15 +30,191 @@ function bgFetch(url, options = {}) {
   });
 }
 
+// ── Storage helpers ───────────────────────────────────────────────────────────
+
+function storageKey(url) {
+  return `haibrid:notes:${url}`;
+}
+
+function getStoredState(url) {
+  return new Promise(resolve => {
+    chrome.storage.local.get(storageKey(url), result => {
+      resolve(result[storageKey(url)] || {});
+    });
+  });
+}
+
+function saveStoredState(url, patch) {
+  return new Promise(resolve => {
+    chrome.storage.local.get(storageKey(url), result => {
+      const merged = { ...(result[storageKey(url)] || {}), ...patch };
+      chrome.storage.local.set({ [storageKey(url)]: merged }, resolve);
+    });
+  });
+}
+
+function savePosition(url, commentId, x, y) {
+  return new Promise(resolve => {
+    chrome.storage.local.get(storageKey(url), result => {
+      const state = result[storageKey(url)] || {};
+      const positions = { ...(state.positions || {}), [commentId]: { x, y } };
+      chrome.storage.local.set({ [storageKey(url)]: { ...state, positions } }, resolve);
+    });
+  });
+}
+
+// ── Sticky notes ──────────────────────────────────────────────────────────────
+
+let notesVisible  = true;
+let toggleBtn     = null;
+const noteEls     = new Map(); // commentId → DOM element
+const pageUrl     = window.location.href;
+
+function fmtDate(iso) {
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function makeDraggable(el, commentId) {
+  let startX, startY, startLeft, startTop;
+
+  const onMove = (e) => {
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    const newLeft = Math.max(0, Math.min(window.innerWidth  - el.offsetWidth,  startLeft + cx - startX));
+    const newTop  = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, startTop  + cy - startY));
+    el.style.left = newLeft + 'px';
+    el.style.top  = newTop  + 'px';
+  };
+
+  const onUp = (e) => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup',   onUp);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend',  onUp);
+    const left = parseInt(el.style.left, 10);
+    const top  = parseInt(el.style.top,  10);
+    savePosition(pageUrl, commentId, left, top);
+  };
+
+  const header = el.querySelector('.haibrid-note-header');
+  header.addEventListener('mousedown', e => {
+    if (e.target.closest('.haibrid-note-close')) return;
+    e.preventDefault();
+    startX    = e.clientX;
+    startY    = e.clientY;
+    startLeft = parseInt(el.style.left, 10) || 0;
+    startTop  = parseInt(el.style.top,  10) || 0;
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
+  header.addEventListener('touchstart', e => {
+    if (e.target.closest('.haibrid-note-close')) return;
+    startX    = e.touches[0].clientX;
+    startY    = e.touches[0].clientY;
+    startLeft = parseInt(el.style.left, 10) || 0;
+    startTop  = parseInt(el.style.top,  10) || 0;
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend',  onUp);
+  }, { passive: true });
+}
+
+function createNote(comment, x, y) {
+  const el = document.createElement('div');
+  el.className = 'haibrid-sticky-note';
+  el.style.left = x + 'px';
+  el.style.top  = y + 'px';
+  el.innerHTML = `
+    <div class="haibrid-note-header">
+      <span class="haibrid-note-date">${fmtDate(comment.createdAt)}</span>
+      <button class="haibrid-note-close" title="Hide this note">×</button>
+    </div>
+    <p class="haibrid-note-text">${comment.text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+  `;
+
+  el.querySelector('.haibrid-note-close').addEventListener('click', () => {
+    el.remove();
+    noteEls.delete(comment.id);
+    // If all notes are individually closed, mark as hidden
+    if (noteEls.size === 0) {
+      notesVisible = false;
+      updateToggleBtn();
+      saveStoredState(pageUrl, { shown: false });
+    }
+  });
+
+  makeDraggable(el, comment.id);
+  document.body.appendChild(el);
+  noteEls.set(comment.id, el);
+  return el;
+}
+
+function showNotes(comments, positions) {
+  const cols = Math.ceil(Math.sqrt(comments.length));
+  comments.forEach((c, i) => {
+    const stored = positions[c.id];
+    const x = stored ? stored.x : 24 + (i % cols) * 230;
+    const y = stored ? stored.y : 80 + Math.floor(i / cols) * 160;
+    createNote(c, x, y);
+  });
+}
+
+function hideNotes() {
+  noteEls.forEach(el => el.remove());
+  noteEls.clear();
+}
+
+function updateToggleBtn() {
+  if (!toggleBtn) return;
+  toggleBtn.textContent = notesVisible ? '💬 Hide notes' : '💬 Show notes';
+  toggleBtn.classList.toggle('haibrid-toggle-active', notesVisible);
+}
+
+function injectToggleBtn(comments, positions) {
+  toggleBtn = document.createElement('button');
+  toggleBtn.id = 'haibrid-notes-toggle';
+  toggleBtn.className = 'haibrid-notes-toggle';
+  updateToggleBtn();
+
+  toggleBtn.addEventListener('click', () => {
+    notesVisible = !notesVisible;
+    if (notesVisible) {
+      showNotes(comments, positions);
+    } else {
+      hideNotes();
+    }
+    updateToggleBtn();
+    saveStoredState(pageUrl, { shown: notesVisible });
+  });
+
+  document.body.appendChild(toggleBtn);
+}
+
+async function initNotes(link) {
+  const comments = link.comments || [];
+  if (comments.length === 0) return;
+
+  const state     = await getStoredState(pageUrl);
+  const positions = state.positions || {};
+  // Default to shown if no preference stored yet
+  notesVisible    = state.shown !== undefined ? state.shown : true;
+
+  injectToggleBtn(comments, positions);
+  if (notesVisible) showNotes(comments, positions);
+}
+
+// ── Mark-as-read chip ─────────────────────────────────────────────────────────
+
 async function init() {
   try {
-    const url = window.location.href;
+    const url  = window.location.href;
     const resp = await bgFetch(`${API_BASE}?q=${encodeURIComponent(url)}`);
     if (!resp.ok || !resp.body) return;
-    const match = resp.body.find(l => l.url === url && !l.read);
+    const match = resp.body.find(l => l.url === url);
     if (!match) return;
     linkId = match.id;
-    injectChip();
+
+    if (!match.read) injectChip();
+    initNotes(match);
   } catch {
     // Server not running or extension context invalid — fail silently
   }
@@ -96,9 +275,7 @@ function showToast(message, onUndo) {
   });
 
   document.body.appendChild(toast);
-  // Trigger CSS transition
   requestAnimationFrame(() => toast.classList.add('haibrid-toast-visible'));
-
   undoTimer = setTimeout(dismissToast, 4000);
 }
 
@@ -108,7 +285,8 @@ function dismissToast() {
   setTimeout(() => { toast?.remove(); toast = null; }, 220);
 }
 
-// Inject styles into the page
+// ── Styles ────────────────────────────────────────────────────────────────────
+
 const style = document.createElement('style');
 style.textContent = `
   #haibrid-mark-read-chip {
@@ -138,31 +316,18 @@ style.textContent = `
     transform: translateY(-2px);
     opacity: 1;
   }
-  #haibrid-mark-read-chip:active {
-    transform: translateY(0);
-  }
-  #haibrid-mark-read-chip.haibrid-chip-loading {
-    opacity: 0.5;
-    pointer-events: none;
-  }
+  #haibrid-mark-read-chip:active { transform: translateY(0); }
+  #haibrid-mark-read-chip.haibrid-chip-loading { opacity: 0.5; pointer-events: none; }
   .haibrid-chip-icon {
-    width: 22px;
-    height: 22px;
+    width: 22px; height: 22px;
     border-radius: 50%;
     background: #059669;
     color: #ffffff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
   }
-  .haibrid-chip-icon svg {
-    width: 13px;
-    height: 13px;
-  }
-  .haibrid-chip-label {
-    white-space: nowrap;
-  }
+  .haibrid-chip-icon svg { width: 13px; height: 13px; }
+  .haibrid-chip-label { white-space: nowrap; }
 
   #haibrid-toast {
     position: fixed;
@@ -170,34 +335,75 @@ style.textContent = `
     left: 50%;
     transform: translateX(-50%) translateY(12px);
     z-index: 2147483647;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: #1e293b;
-    color: #f1f5f9;
-    border-radius: 10px;
-    padding: 10px 16px;
+    display: flex; align-items: center; gap: 12px;
+    background: #1e293b; color: #f1f5f9;
+    border-radius: 10px; padding: 10px 16px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
-    font-size: 13px;
-    font-weight: 500;
+    font-size: 13px; font-weight: 500;
     box-shadow: 0 8px 24px rgba(15,28,53,0.22);
-    opacity: 0;
-    transition: opacity 0.18s, transform 0.18s;
+    opacity: 0; transition: opacity 0.18s, transform 0.18s;
     white-space: nowrap;
   }
-  #haibrid-toast.haibrid-toast-visible {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
+  #haibrid-toast.haibrid-toast-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
   .haibrid-toast-undo {
-    all: unset;
-    color: #93c5fd;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: color 0.1s;
+    all: unset; color: #93c5fd; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: color 0.1s;
   }
   .haibrid-toast-undo:hover { color: #bfdbfe; }
+
+  /* ── Sticky notes ── */
+  .haibrid-sticky-note {
+    position: fixed;
+    z-index: 2147483644;
+    width: 210px;
+    background: #FFFDE7;
+    border: 1px solid #F9E04B;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(15,28,53,0.14);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+    font-size: 13px;
+    overflow: hidden;
+  }
+  .haibrid-note-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 8px 5px;
+    background: #F9E04B;
+    cursor: grab;
+    user-select: none;
+  }
+  .haibrid-note-header:active { cursor: grabbing; }
+  .haibrid-note-date { font-size: 11px; font-weight: 500; color: #7a6a00; }
+  .haibrid-note-close {
+    all: unset; font-size: 16px; color: #7a6a00; cursor: pointer;
+    line-height: 1; transition: color 0.1s;
+  }
+  .haibrid-note-close:hover { color: #c53030; }
+  .haibrid-note-text {
+    padding: 8px 10px; margin: 0;
+    color: #2d2a00; white-space: pre-wrap;
+    word-break: break-word; line-height: 1.45;
+  }
+
+  /* ── Notes toggle button ── */
+  .haibrid-notes-toggle {
+    position: fixed;
+    bottom: 28px;
+    left: 24px;
+    z-index: 2147483645;
+    background: #ffffff;
+    border: 1.5px solid #E3E8F0;
+    border-radius: 20px;
+    padding: 7px 13px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+    font-size: 12px; font-weight: 600;
+    color: #344563;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(15,28,53,0.10);
+    transition: box-shadow 0.15s, transform 0.15s;
+    user-select: none;
+  }
+  .haibrid-notes-toggle:hover { box-shadow: 0 6px 16px rgba(15,28,53,0.15); transform: translateY(-1px); }
+  .haibrid-notes-toggle.haibrid-toggle-active { border-color: #DBEAFE; color: #2563EB; background: #EFF6FF; }
 `;
 document.head.appendChild(style);
 

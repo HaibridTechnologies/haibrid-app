@@ -257,6 +257,35 @@ router.post('/import', (req, res) => {
   res.json({ added, tagged, skipped });
 });
 
+// ─── POST /api/links/:id/comments ────────────────────────────────────────────
+// Body: { text }  — appends a comment and returns the updated link.
+router.post('/:id/comments', (req, res) => {
+  const { text } = req.body;
+  if (!text || !text.trim()) return res.status(400).json({ error: 'text is required' });
+
+  const links = readLinks();
+  const link  = links.find(l => l.id === req.params.id);
+  if (!link) return res.status(404).json({ error: 'not found' });
+
+  if (!Array.isArray(link.comments)) link.comments = [];
+  link.comments.push({ id: Date.now().toString(), text: text.trim(), createdAt: new Date().toISOString() });
+  writeLinks(links);
+  res.json(link);
+});
+
+// ─── DELETE /api/links/:id/comments/:commentId ────────────────────────────────
+router.delete('/:id/comments/:commentId', (req, res) => {
+  const links = readLinks();
+  const link  = links.find(l => l.id === req.params.id);
+  if (!link) return res.status(404).json({ error: 'not found' });
+
+  const before = (link.comments || []).length;
+  link.comments = (link.comments || []).filter(c => c.id !== req.params.commentId);
+  if (link.comments.length === before) return res.status(404).json({ error: 'comment not found' });
+  writeLinks(links);
+  res.status(204).end();
+});
+
 // ─── GET /api/links/:id ──────────────────────────────────────────────────────
 // Fetch a single link by ID — used by LinkModal to poll for status changes.
 router.get('/:id', (req, res) => {

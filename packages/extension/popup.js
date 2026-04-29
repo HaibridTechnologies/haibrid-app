@@ -54,6 +54,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const existingChipsEl    = document.getElementById('existing-chips');
   const existingProjSearch = document.getElementById('existing-project-search');
   const existingDropdown   = document.getElementById('existing-project-dropdown');
+  // comments
+  const commentsList   = document.getElementById('comments-list');
+  const commentInput   = document.getElementById('comment-input');
+  const commentAddBtn  = document.getElementById('comment-add-btn');
 
   let existingLink        = null;
   let allProjects         = [];
@@ -231,6 +235,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Populate existing project chips
       existingProjects = allProjects.filter(p => (existingLink.projects || []).includes(p.id));
       renderExistingChips();
+      renderComments();
     }
   });
 
@@ -293,6 +298,66 @@ document.addEventListener('DOMContentLoaded', () => {
 
   existingProjSearch.addEventListener('blur', () => {
     setTimeout(() => { existingDropdown.hidden = true; existingProjSearch.value = ''; }, 150);
+  });
+
+  // ── Comments ──────────────────────────────────────────────────
+
+  function renderComments() {
+    commentsList.innerHTML = '';
+    const comments = existingLink?.comments || [];
+    if (comments.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'comments-empty';
+      empty.textContent = 'No comments yet.';
+      commentsList.appendChild(empty);
+      return;
+    }
+    comments.forEach(c => {
+      const item = document.createElement('div');
+      item.className = 'comment-item';
+      const date = new Date(c.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      item.innerHTML = `
+        <div class="comment-item-header">
+          <span class="comment-date">${escHtml(date)}</span>
+          <button class="comment-delete" data-id="${escHtml(c.id)}" title="Delete">×</button>
+        </div>
+        <p class="comment-text">${escHtml(c.text)}</p>
+      `;
+      item.querySelector('.comment-delete').addEventListener('click', async () => {
+        try {
+          await fetch(`${API_LINKS}/${existingLink.id}/comments/${c.id}`, { method: 'DELETE' });
+          existingLink.comments = (existingLink.comments || []).filter(x => x.id !== c.id);
+          renderComments();
+        } catch {}
+      });
+      commentsList.appendChild(item);
+    });
+  }
+
+  async function submitComment() {
+    const text = commentInput.value.trim();
+    if (!text || !existingLink) return;
+    commentAddBtn.disabled = true;
+    try {
+      const res = await fetch(`${API_LINKS}/${existingLink.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) throw new Error();
+      existingLink = await res.json();
+      commentInput.value = '';
+      renderComments();
+    } catch {
+      showStatus('Could not add comment.', 'error');
+    } finally {
+      commentAddBtn.disabled = false;
+    }
+  }
+
+  commentAddBtn.addEventListener('click', submitComment);
+  commentInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') submitComment();
   });
 
   // ── Save ─────────────────────────────────────────────────────
