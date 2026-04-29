@@ -60,6 +60,26 @@ export const updateLinkTitle = (id, title) =>
 export const deleteLink = (id) =>
   request(`/api/links/${id}`, { method: 'DELETE' })
 
+/** Trigger a browser download of a specific set of links as a JSON file. */
+export const exportSelectedLinks = (links) => {
+  const data = { version: 1, exportedAt: new Date().toISOString(), links }
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `haibrid-export-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/** Import links from a parsed export object. Returns { added, skipped }. */
+export const importLinks = (data) =>
+  request('/api/links/import', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(data),
+  })
+
 /** Replace the full project list for a link and sync the inverted index. */
 export const updateLinkProjects = (id, projects) =>
   request(`/api/links/${id}/projects`, {

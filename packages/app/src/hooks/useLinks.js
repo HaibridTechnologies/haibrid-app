@@ -16,16 +16,17 @@ import * as api from '../api/linksApi'
  * @param {string}  options.projectId  - Project to filter by (only in 'project' mode)
  * @param {string}  options.mode       - 'reading-list' | 'project' | 'unassigned'
  */
-export function useLinks({ projectId = null, mode = 'reading-list' } = {}) {
-  const [allLinks, setAllLinks] = useState([])   // full unfiltered set from server
+export function useLinks({ projectId = null, mode = 'reading-list', readFilter = 'unread' } = {}) {
+  const [allLinks, setAllLinks] = useState([])
   const [isAdding, setIsAdding] = useState(false)
   const [search, setSearch]     = useState('')
 
-  /** Build the correct API call for the current view mode (no search — done client-side). */
+  /** Build the correct API call for the current view mode. */
   const fetchLinks = useCallback(() => {
     if (mode === 'unassigned') return api.getLinks('', null, { unassigned: true })
     if (mode === 'project')    return api.getLinks('', projectId)
-    return api.getLinks('', null, { unread: true })
+    // reading-list: fetch all then filter client-side so filter switching is instant
+    return api.getLinks('', null)
   }, [mode, projectId])
 
   /** Load (or reload) the full link set from the server. */
@@ -38,16 +39,22 @@ export function useLinks({ projectId = null, mode = 'reading-list' } = {}) {
   useEffect(() => { load() }, [load])
 
   /** Client-side filter — instant, no round-trip needed. */
-  const links = search
-    ? allLinks.filter(l => {
-        const q = search.toLowerCase()
-        return (
-          l.url.toLowerCase().includes(q) ||
-          (l.title && l.title.toLowerCase().includes(q)) ||
-          (l.notes && l.notes.toLowerCase().includes(q))
-        )
-      })
-    : allLinks
+  const links = allLinks.filter(l => {
+    // In reading-list mode apply the readFilter; other modes show everything fetched
+    if (mode === 'reading-list') {
+      if (readFilter === 'unread' && l.read)  return false
+      if (readFilter === 'read'   && !l.read) return false
+    }
+    if (search) {
+      const q = search.toLowerCase()
+      return (
+        l.url.toLowerCase().includes(q) ||
+        (l.title && l.title.toLowerCase().includes(q)) ||
+        (l.notes && l.notes.toLowerCase().includes(q))
+      )
+    }
+    return true
+  })
 
   const handleSearchChange = useCallback((value) => {
     setSearch(value)
@@ -137,5 +144,5 @@ export function useLinks({ projectId = null, mode = 'reading-list' } = {}) {
     setAllLinks(prev => prev.map(l => l.id === updated.id ? { ...l, title: updated.title } : l))
   }, [])
 
-  return { links, isAdding, add, toggle, remove, updateProjects, updateTitle, handleSearchChange }
+  return { links, isAdding, add, toggle, remove, updateProjects, updateTitle, handleSearchChange, reload: load }
 }

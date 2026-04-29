@@ -18,7 +18,13 @@ import ProjectSelector from '../projects/ProjectSelector'
  * @param {Object}   project         - Current project context (null in reading-list mode)
  * @param {boolean}  readOnly        - Hides the add form when true
  */
-export default function LinkToolbar({ isAdding, onAdd, onSearchChange, project = null, readOnly = false }) {
+const READ_FILTERS = [
+  { value: 'unread', label: 'Unread' },
+  { value: 'all',    label: 'All' },
+  { value: 'read',   label: 'Read' },
+]
+
+export default function LinkToolbar({ isAdding, onAdd, onSearchChange, project = null, readOnly = false, readFilter = null, onReadFilterChange }) {
   const [url, setUrl]                   = useState('')
   const [notes, setNotes]               = useState('')
   const [selectedProjects, setSelected] = useState(project ? [project.id] : [])
@@ -41,6 +47,19 @@ export default function LinkToolbar({ isAdding, onAdd, onSearchChange, project =
           autoComplete="off"
           onChange={e => onSearchChange(e.target.value)}
         />
+        {readFilter !== null && (
+          <div className="read-filter-tabs">
+            {READ_FILTERS.map(f => (
+              <button
+                key={f.value}
+                className={`read-filter-tab${readFilter === f.value ? ' active' : ''}`}
+                onClick={() => onReadFilterChange(f.value)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {!readOnly && (

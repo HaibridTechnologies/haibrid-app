@@ -185,6 +185,57 @@ router.post('/:id/citations/refresh', async (req, res) => {
   res.json(link);
 });
 
+// ─── GET /api/links/export ───────────────────────────────────────────────────
+// Download all links as a JSON file.
+router.get('/export', (req, res) => {
+  const links = readLinks();
+  const filename = `haibrid-export-${new Date().toISOString().slice(0, 10)}.json`;
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Type', 'application/json');
+  res.json({ version: 1, exportedAt: new Date().toISOString(), links });
+});
+
+// ─── POST /api/links/import ──────────────────────────────────────────────────
+// Body: { links: Link[] }  (the shape produced by /export)
+// Merges imported links into the local store, skipping URLs that already exist.
+// Returns { added, skipped } counts.
+router.post('/import', (req, res) => {
+  const incoming = req.body?.links;
+  if (!Array.isArray(incoming)) return res.status(400).json({ error: 'links array required' });
+
+  const existing = readLinks();
+  const existingUrls = new Set(existing.map(l => l.url));
+
+  let added = 0, skipped = 0;
+  const toAdd = [];
+
+  for (const link of incoming) {
+    if (!link.url) { skipped++; continue; }
+    const url = normaliseUrl(link.url);
+    if (existingUrls.has(url)) { skipped++; continue; }
+    existingUrls.add(url);
+    toAdd.push({
+      id:        Date.now().toString() + '-' + added,
+      url,
+      title:     link.title || url,
+      notes:     link.notes || '',
+      read:      !!link.read,
+      projects:  [],             // project IDs don't transfer across instances
+      createdAt: link.createdAt || new Date().toISOString(),
+      ...(link.citationCount != null ? { citationCount: link.citationCount, citationCountAt: link.citationCountAt } : {}),
+    });
+    added++;
+  }
+
+  if (toAdd.length > 0) {
+    // Prepend newest-first; reverse so the import ordering is preserved after unshift
+    const merged = [...toAdd.reverse(), ...existing];
+    writeLinks(merged);
+  }
+
+  res.json({ added, skipped });
+});
+
 // ─── GET /api/links/:id ──────────────────────────────────────────────────────
 // Fetch a single link by ID — used by LinkModal to poll for status changes.
 router.get('/:id', (req, res) => {

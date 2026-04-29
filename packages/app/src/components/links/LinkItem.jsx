@@ -7,7 +7,7 @@ function safeUrl(url) {
   try { new URL(url); return url } catch { return '#' }
 }
 
-export default function LinkItem({ link, allProjects = [], onToggle, onDelete, onDetails, onTagsChange, onTitleChange }) {
+export default function LinkItem({ link, allProjects = [], onToggle, onDelete, onDetails, onTagsChange, onTitleChange, selectMode = false, selected = false, onSelect }) {
   const [editing,   setEditing]   = useState(false)
   const [draft,     setDraft]     = useState(link.title)
   const inputRef                  = useRef(null)
@@ -35,12 +35,13 @@ export default function LinkItem({ link, allProjects = [], onToggle, onDelete, o
   }
 
   return (
-    <div className={`link-item${link.read ? ' is-read' : ''}`}>
-      <button
-        className={`toggle-btn${link.read ? ' done' : ''}`}
-        title={link.read ? 'Mark unread' : 'Mark read'}
-        onClick={() => onToggle(link)}
-      />
+    <div
+      className={`link-item${link.read ? ' is-read' : ''}${selectMode ? ' select-mode' : ''}${selected ? ' is-selected' : ''}`}
+      onClick={selectMode ? () => onSelect(link.id) : undefined}
+    >
+      {selectMode && (
+        <span className={`link-checkbox${selected ? ' checked' : ''}`} aria-hidden="true" />
+      )}
       <div className="link-body">
         {editing ? (
           <input
@@ -75,9 +76,14 @@ export default function LinkItem({ link, allProjects = [], onToggle, onDelete, o
         />
       </div>
       <div className="link-meta">
-        <span className={`badge ${link.read ? 'read' : 'unread'}`}>
-          {link.read ? 'Read' : 'Unread'}
-        </span>
+        <button
+          className={`read-toggle-btn ${link.read ? 'is-read' : 'is-unread'}`}
+          onClick={() => onToggle(link)}
+          title={link.read ? 'Mark as unread' : 'Mark as read'}
+        >
+          <span className="read-toggle-label">{link.read ? 'Read' : 'Unread'}</span>
+          <span className="read-toggle-action">{link.read ? 'Mark unread' : 'Mark as read'}</span>
+        </button>
         <span className="meta-date">Added {fmtDate(link.createdAt)}</span>
         <button className="details-btn" title="View details" onClick={() => onDetails(link)}>
           ⓘ
