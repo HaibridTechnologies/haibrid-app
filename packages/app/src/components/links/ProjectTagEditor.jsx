@@ -17,13 +17,12 @@ export default function ProjectTagEditor({ projectIds = [], allProjects = [], on
 
   // Close dropdown when clicking outside
   useEffect(() => {
-    if (!open) return
     const handler = (e) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [open])
+  }, [])
 
   const assigned   = allProjects.filter(p => projectIds.includes(p.id))
   const unassigned = allProjects.filter(p => !projectIds.includes(p.id))

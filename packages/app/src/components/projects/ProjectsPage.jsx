@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useProjects } from '../../hooks/useProjects'
 import ProjectCard from './ProjectCard'
 
+const UNASSIGNED_PROJECT = { id: 'unassigned', name: 'Unassigned', color: 'var(--muted-light)' }
+
 /** Preset palette for the new-project colour picker. */
 const COLORS = [
   '#2563eb', '#7c3aed', '#059669', '#d97706',
@@ -76,7 +78,7 @@ export default function ProjectsPage({ onOpenProject }) {
             {/* Static card for read links that haven't been assigned to any project */}
             <div
               className="project-card unassigned-card"
-              onClick={() => onOpenProject({ id: 'unassigned', name: 'Unassigned', color: 'var(--muted-light)' })}
+              onClick={() => onOpenProject(UNASSIGNED_PROJECT)}
             >
               <div className="project-card-accent" style={{ background: 'var(--muted-light)' }} />
               <div className="project-card-body">

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useMatrixDrag } from '../../../hooks/useMatrixDrag'
 import TaskDot from './TaskDot'
@@ -12,9 +12,9 @@ export default function MatrixView({ tasks, onUpdate }) {
   const scored   = tasks.filter(t => t.important !== null && t.urgent !== null)
   const unscored = tasks.filter(t => t.important === null || t.urgent  === null)
 
-  const showTooltip = (text, e) => setTooltip({ visible: true, text, x: e.clientX, y: e.clientY })
-  const moveTooltip = (e)       => setTooltip(t => ({ ...t, x: e.clientX, y: e.clientY }))
-  const hideTooltip = ()        => setTooltip(t => ({ ...t, visible: false }))
+  const showTooltip = useCallback((text, e) => setTooltip({ visible: true, text, x: e.clientX, y: e.clientY }), [])
+  const moveTooltip = useCallback((e)       => setTooltip(t => ({ ...t, x: e.clientX, y: e.clientY })), [])
+  const hideTooltip = useCallback(()        => setTooltip(t => ({ ...t, visible: false })), [])
 
   return (
     <div className="tasks-matrix-view">

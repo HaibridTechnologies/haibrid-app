@@ -28,3 +28,9 @@ export function fmtDate(iso) {
     day: 'numeric', month: 'short', year: 'numeric',
   })
 }
+
+export function fmtDwell(seconds) {
+  if (seconds < 60)   return `${seconds}s`
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`
+  return `${(seconds / 3600).toFixed(1)}h`
+}

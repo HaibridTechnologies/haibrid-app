@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   getVisits, clearVisits, deleteVisit,
   getConfig, getFilters, saveFilters,
@@ -7,14 +7,9 @@ import {
 } from '../../api/visitsApi'
 import { addLink } from '../../api/linksApi'
 import { getProjects } from '../../api/projectsApi'
+import { fmtDwell } from '../../utils/date'
 
 const DEFAULT_FILTERS = { blockList: [], allowList: [], minDwellSeconds: 30, evaluationPrompt: '' }
-
-function fmtDwell(seconds) {
-  if (seconds < 60)   return `${seconds}s`
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`
-  return `${(seconds / 3600).toFixed(1)}h`
-}
 
 function fmtDate(iso) {
   const d = new Date(iso)
@@ -104,12 +99,23 @@ export default function TrackingPage() {
       })
   }, [])
 
+  const filterSavedTimerRef  = useRef(null)
+  const feedbackSavedTimerRef = useRef(null)
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(filterSavedTimerRef.current)
+      clearTimeout(feedbackSavedTimerRef.current)
+    }
+  }, [])
+
   const handleSaveFilters = async () => {
     setSaving(true)
     await saveFilters(filters).catch(() => {})
     setSaving(false)
     setFilterSaved(true)
-    setTimeout(() => setFilterSaved(false), 2000)
+    clearTimeout(filterSavedTimerRef.current)
+    filterSavedTimerRef.current = setTimeout(() => setFilterSaved(false), 2000)
   }
 
   const handleEvaluate = async () => {
@@ -154,7 +160,8 @@ export default function TrackingPage() {
     if (entries.length) await saveFeedback(entries).catch(() => {})
     setSavingFeedback(false)
     setFeedbackSaved(true)
-    setTimeout(() => setFeedbackSaved(false), 2500)
+    clearTimeout(feedbackSavedTimerRef.current)
+    feedbackSavedTimerRef.current = setTimeout(() => setFeedbackSaved(false), 2500)
   }
 
   const handleSaveToList = async () => {

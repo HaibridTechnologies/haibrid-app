@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { getLink, updateLinkTitle, refreshCitations } from '../../api/linksApi'
 import { getContent, saveContent } from '../../api/contentApi'
 import { getFeedback } from '../../api/visitsApi'
@@ -40,13 +40,13 @@ export default function LinkModal({ link: initialLink, onClose, onLinkUpdated })
   const pollRef                             = useRef(null)
 
   // Auto-fetch citation count on open for arxiv links that don't have one yet
-  const isArxiv = /arxiv\.org/i.test(link.url)
+  const isArxiv = useMemo(() => /arxiv\.org/i.test(link.url), [link.url])
   useEffect(() => {
     if (!isArxiv || link.citationCount != null) return
     refreshCitations(link.id)
       .then(updated => updateLink(updated))
       .catch(() => {})
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isArxiv, link.id, link.citationCount]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Switch to PDF tab automatically the first time a pdfFile appears
   const prevPdfRef = useRef(initialLink.pdfFile)
