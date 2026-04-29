@@ -111,8 +111,12 @@ export default function ReadingList({ project = null }) {
           projects: [project.id],
         }))
       }
-      const { added, skipped } = await importLinks(payload)
-      showSnackbar({ message: `Imported ${added} link${added !== 1 ? 's' : ''}${skipped ? ` (${skipped} skipped — already saved)` : ''}` })
+      const { added, tagged, skipped } = await importLinks(payload)
+      const parts = []
+      if (added)  parts.push(`${added} added`)
+      if (tagged) parts.push(`${tagged} tagged with project`)
+      if (skipped && !added && !tagged) parts.push(`${skipped} already up to date`)
+      showSnackbar({ message: `Import complete — ${parts.join(', ') || 'nothing changed'}` })
       reload()
     } catch {
       showSnackbar({ message: 'Import failed — invalid file' })

@@ -197,43 +197,64 @@ router.get('/export', (req, res) => {
 
 // ─── POST /api/links/import ──────────────────────────────────────────────────
 // Body: { links: Link[] }  (the shape produced by /export)
-// Merges imported links into the local store, skipping URLs that already exist.
-// Returns { added, skipped } counts.
+// For each incoming link:
+//   - New URL → add as a new link (with any provided project tags)
+//   - Existing URL + project tags → merge the project tags onto the existing link
+//   - Existing URL, no project tags → skip
+// Returns { added, tagged, skipped } counts.
 router.post('/import', (req, res) => {
   const incoming = req.body?.links;
   if (!Array.isArray(incoming)) return res.status(400).json({ error: 'links array required' });
 
-  const existing = readLinks();
-  const existingUrls = new Set(existing.map(l => l.url));
+  const existing  = readLinks();
+  const urlToLink = new Map(existing.map(l => [l.url, l]));
+  const seenInBatch = new Set();
+  const index = readIndex();
 
-  let added = 0, skipped = 0;
+  let added = 0, tagged = 0, skipped = 0;
   const toAdd = [];
+  let dirty = false;
 
   for (const link of incoming) {
     if (!link.url) { skipped++; continue; }
-    const url = normaliseUrl(link.url);
-    if (existingUrls.has(url)) { skipped++; continue; }
-    existingUrls.add(url);
-    toAdd.push({
-      id:        Date.now().toString() + '-' + added,
-      url,
-      title:     link.title || url,
-      notes:     link.notes || '',
-      read:      !!link.read,
-      projects:  [],             // project IDs don't transfer across instances
-      createdAt: link.createdAt || new Date().toISOString(),
-      ...(link.citationCount != null ? { citationCount: link.citationCount, citationCountAt: link.citationCountAt } : {}),
-    });
-    added++;
+    const url         = normaliseUrl(link.url);
+    const newProjects = Array.isArray(link.projects) ? link.projects : [];
+
+    if (urlToLink.has(url)) {
+      // URL already saved — merge project tags if any were requested
+      if (newProjects.length === 0) { skipped++; continue; }
+      const saved  = urlToLink.get(url);
+      const before = saved.projects || [];
+      const merged = [...new Set([...before, ...newProjects])];
+      if (merged.length === before.length) { skipped++; continue; }
+      updateIndex(index, saved.id, before, merged);
+      saved.projects = merged;
+      tagged++;
+      dirty = true;
+    } else if (!seenInBatch.has(url)) {
+      seenInBatch.add(url);
+      toAdd.push({
+        id:        Date.now().toString() + '-' + added,
+        url,
+        title:     link.title || url,
+        notes:     link.notes || '',
+        read:      !!link.read,
+        projects:  newProjects,
+        createdAt: link.createdAt || new Date().toISOString(),
+        ...(link.citationCount != null ? { citationCount: link.citationCount, citationCountAt: link.citationCountAt } : {}),
+      });
+      added++;
+    } else {
+      skipped++;
+    }
   }
 
-  if (toAdd.length > 0) {
-    // Prepend newest-first; reverse so the import ordering is preserved after unshift
-    const merged = [...toAdd.reverse(), ...existing];
-    writeLinks(merged);
+  if (toAdd.length > 0 || dirty) {
+    writeLinks([...toAdd.reverse(), ...existing]);
+    writeIndex(index);
   }
 
-  res.json({ added, skipped });
+  res.json({ added, tagged, skipped });
 });
 
 // ─── GET /api/links/:id ──────────────────────────────────────────────────────
