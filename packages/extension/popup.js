@@ -37,6 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const existingTitle     = document.getElementById('existing-title');
   const renameBtn         = document.getElementById('rename-btn');
   const saveContentBtn    = document.getElementById('save-content-btn');
+  const contentStatusChip = document.getElementById('content-status-chip');
   const markReadBtn       = document.getElementById('mark-read-btn');
   const markReadCta       = document.getElementById('mark-read-cta');
   const removeBtn         = document.getElementById('remove-btn');
@@ -227,13 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // CTA only visible when unread; secondary btn only when already read
       markReadCta.hidden = existingLink.read;
       markReadBtn.hidden = !existingLink.read;
-      if (existingLink.contentStatus === 'parsed') {
-        saveContentBtn.textContent = 'Content Saved ✓';
-        saveContentBtn.disabled = true;
-      } else if (existingLink.contentStatus === 'pending') {
-        saveContentBtn.textContent = 'Fetching content…';
-        saveContentBtn.disabled = true;
-      }
+      setContentStatus(existingLink.contentStatus);
       // Populate existing project chips
       existingProjects = allProjects.filter(p => (existingLink.projects || []).includes(p.id));
       renderExistingChips();
@@ -457,7 +452,7 @@ document.addEventListener('DOMContentLoaded', () => {
   saveContentBtn.addEventListener('click', async () => {
     if (!existingLink) return;
     saveContentBtn.disabled = true;
-    saveContentBtn.textContent = 'Saving…';
+    saveContentBtn.textContent = 'Saving…'; // restored by setContentStatus on success/error
     try {
       // Try to extract DOM text via scripting API
       let text = null;
@@ -495,12 +490,11 @@ document.addEventListener('DOMContentLoaded', () => {
         ? 'Content saved!'
         : 'Content is being fetched…';
       showStatus(msg, 'success');
-      saveContentBtn.textContent = 'Content Saved ✓';
+      setContentStatus(updated.contentStatus);
       setTimeout(hideStatus, 2500);
     } catch (err) {
       showStatus(err.message || 'Could not save content.', 'error');
-      saveContentBtn.disabled = false;
-      saveContentBtn.textContent = 'Save Page Content';
+      setContentStatus(null);
     }
   });
 
@@ -1049,6 +1043,23 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ── Helpers ──────────────────────────────────────────────────
+  function setContentStatus(status) {
+    if (status === 'parsed') {
+      saveContentBtn.hidden = true;
+      contentStatusChip.hidden = false;
+      contentStatusChip.className = 'content-status-chip status-saved';
+      contentStatusChip.innerHTML = '<span class="content-status-chip-icon">✓</span> Content saved';
+    } else if (status === 'pending') {
+      saveContentBtn.hidden = true;
+      contentStatusChip.hidden = false;
+      contentStatusChip.className = 'content-status-chip status-pending';
+      contentStatusChip.innerHTML = '<span class="content-status-chip-icon">⏳</span> Fetching content…';
+    } else {
+      saveContentBtn.hidden = false;
+      contentStatusChip.hidden = true;
+    }
+  }
+
   function showStatus(msg, type) {
     statusEl.textContent = msg;
     statusEl.className = `status ${type}`;

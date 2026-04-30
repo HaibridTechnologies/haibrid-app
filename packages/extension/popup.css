@@ -146,7 +146,38 @@ button:disabled { opacity: 0.55; cursor: default; box-shadow: none; }
 }
 .btn-danger:hover { background: var(--danger-light); box-shadow: none; }
 
-#existing-actions { display: flex; flex-direction: column; gap: 8px; }
+#existing-actions { display: flex; flex-direction: column; gap: 0; }
+
+.action-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+.action-group:last-child { border-bottom: none; }
+.action-group-danger { padding-top: 10px; padding-bottom: 10px; }
+
+/* Content status chip — replaces the disabled button */
+#content-status-wrap { display: flex; flex-direction: column; gap: 8px; }
+.content-status-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-weight: 500;
+}
+.content-status-chip.status-saved {
+  background: var(--success-light);
+  color: var(--success);
+}
+.content-status-chip.status-pending {
+  background: #FFFBEB;
+  color: #D97706;
+}
+.content-status-chip-icon { font-size: 13px; }
 
 .rename-row { display: flex; gap: 6px; align-items: center; }
 .rename-row input { flex: 1; }
@@ -764,11 +795,16 @@ button:disabled { opacity: 0.55; cursor: default; box-shadow: none; }
   margin-bottom: 4px;
 }
 .comments-label-row label { margin-bottom: 0; }
-.btn-xs {
+#notes-toggle-btn {
+  all: unset;
   font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 6px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px 0;
+  transition: color 0.12s;
 }
+#notes-toggle-btn:hover { color: var(--accent); }
 
 /* ── Search tab ───────────────────────────────────────────── */
 .search-tab-input-wrap {

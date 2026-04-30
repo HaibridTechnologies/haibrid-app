@@ -63,59 +63,77 @@
 
       <div id="existing-actions" hidden>
 
-        <!-- Mark as read CTA — only shown when link is unread -->
-        <button id="mark-read-cta" class="mark-read-cta" title="Mark this page as read">
-          <span class="mark-read-circle">
-            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M5 10.5l3.5 3.5 6.5-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </span>
-          <span class="mark-read-label">Mark as read</span>
-        </button>
-
-        <div class="field">
-          <label for="existing-title">Title</label>
-          <div class="rename-row">
-            <input id="existing-title" type="text" autocomplete="off" />
-            <button id="rename-btn" class="btn-icon" title="Save title" hidden>✓</button>
-          </div>
+        <!-- Group 1: Primary action -->
+        <div class="action-group">
+          <button id="mark-read-cta" class="mark-read-cta" title="Mark this page as read">
+            <span class="mark-read-circle">
+              <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M5 10.5l3.5 3.5 6.5-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </span>
+            <span class="mark-read-label">Mark as read</span>
+          </button>
         </div>
-        <div class="field project-field">
-          <label>Projects</label>
-          <div id="existing-tag-wrap" class="tag-input-wrap">
-            <div id="existing-chips" class="chips"></div>
-            <input
-              id="existing-project-search"
-              class="tag-search"
-              type="text"
-              placeholder="Add to project…"
-              autocomplete="off"
-            />
-          </div>
-          <div id="existing-project-dropdown" class="project-dropdown" hidden></div>
-        </div>
-        <button id="save-content-btn" class="btn-secondary">Save Page Content</button>
-        <button id="mark-read-btn" class="btn-secondary" hidden>Mark as Unread</button>
 
-        <!-- User comments -->
-        <div class="field">
-          <div class="comments-label-row">
-            <label>Comments</label>
-            <button id="notes-toggle-btn" class="btn-ghost btn-xs" title="Show or hide the sticky note on this page">💬 Hide note</button>
+        <!-- Group 2: Metadata -->
+        <div class="action-group">
+          <div class="field">
+            <label for="existing-title">Title</label>
+            <div class="rename-row">
+              <input id="existing-title" type="text" autocomplete="off" />
+              <button id="rename-btn" class="btn-icon" title="Save title" hidden>✓</button>
+            </div>
           </div>
-          <div id="comments-list" class="comments-list"></div>
-          <div class="comment-form">
-            <input
-              id="comment-input"
-              type="text"
-              placeholder="Add a comment…"
-              autocomplete="off"
-            />
-            <button id="comment-add-btn" class="btn-icon" title="Add comment">+</button>
+          <div class="field project-field">
+            <label>Projects</label>
+            <div id="existing-tag-wrap" class="tag-input-wrap">
+              <div id="existing-chips" class="chips"></div>
+              <input
+                id="existing-project-search"
+                class="tag-search"
+                type="text"
+                placeholder="Add to project…"
+                autocomplete="off"
+              />
+            </div>
+            <div id="existing-project-dropdown" class="project-dropdown" hidden></div>
           </div>
         </div>
 
-        <button id="remove-btn" class="btn-danger">Remove from List</button>
+        <!-- Group 3: Page content + read state -->
+        <div class="action-group">
+          <div id="content-status-wrap">
+            <button id="save-content-btn" class="btn-secondary">Save Page Content</button>
+            <div id="content-status-chip" class="content-status-chip" hidden></div>
+          </div>
+          <button id="mark-read-btn" class="btn-secondary" hidden>Mark as Unread</button>
+        </div>
+
+        <!-- Group 4: Comments -->
+        <div class="action-group">
+          <div class="field">
+            <div class="comments-label-row">
+              <label>Comments</label>
+              <button id="notes-toggle-btn" title="Show or hide the sticky note on this page">💬 Hide note</button>
+            </div>
+            <div id="comments-list" class="comments-list"></div>
+            <div class="comment-form">
+              <input
+                id="comment-input"
+                type="text"
+                placeholder="Add a comment…"
+                autocomplete="off"
+              />
+              <button id="comment-add-btn" class="btn-icon" title="Add comment">+</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Group 5: Danger zone -->
+        <div class="action-group action-group-danger">
+          <button id="remove-btn" class="btn-danger">Remove from List</button>
+        </div>
+
       </div>
 
       <div id="status" class="status" hidden></div>
