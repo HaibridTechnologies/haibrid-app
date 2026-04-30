@@ -55,9 +55,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const existingProjSearch = document.getElementById('existing-project-search');
   const existingDropdown   = document.getElementById('existing-project-dropdown');
   // comments
-  const commentsList   = document.getElementById('comments-list');
-  const commentInput   = document.getElementById('comment-input');
-  const commentAddBtn  = document.getElementById('comment-add-btn');
+  const commentsList    = document.getElementById('comments-list');
+  const commentInput    = document.getElementById('comment-input');
+  const commentAddBtn   = document.getElementById('comment-add-btn');
+  const notesToggleBtn  = document.getElementById('notes-toggle-btn');
 
   let existingLink        = null;
   let allProjects         = [];
@@ -71,8 +72,9 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.tab-panel').forEach(p => p.hidden = true);
       tab.classList.add('active');
       document.getElementById(`tab-${tab.dataset.tab}`).hidden = false;
-      if (tab.dataset.tab === 'list') loadUnread();
-      if (tab.dataset.tab === 'chat') initChatTab();
+      if (tab.dataset.tab === 'list')   loadUnread();
+      if (tab.dataset.tab === 'search') searchInput.focus();
+      if (tab.dataset.tab === 'chat')   initChatTab();
     });
   });
 
@@ -236,6 +238,9 @@ document.addEventListener('DOMContentLoaded', () => {
       existingProjects = allProjects.filter(p => (existingLink.projects || []).includes(p.id));
       renderExistingChips();
       renderComments();
+      const hasComments = (existingLink.comments || []).length > 0;
+      notesToggleBtn.hidden = !hasComments;
+      if (hasComments) syncNotesToggleBtn(tab.url);
     }
   });
 
@@ -301,6 +306,24 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ── Comments ──────────────────────────────────────────────────
+
+  // Sync toggle button label from chrome.storage.local for this URL
+  async function syncNotesToggleBtn(url) {
+    const key = `haibrid:notes:${url}`;
+    chrome.storage.local.get(key, result => {
+      const shown = result[key]?.shown !== false; // default true
+      notesToggleBtn.textContent = shown ? '💬 Hide note' : '💬 Show note';
+    });
+  }
+
+  notesToggleBtn.addEventListener('click', async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) return;
+    chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_NOTE' }, (resp) => {
+      if (chrome.runtime.lastError) return; // content script not ready
+      notesToggleBtn.textContent = resp?.shown ? '💬 Hide note' : '💬 Show note';
+    });
+  });
 
   function renderComments() {
     commentsList.innerHTML = '';
@@ -610,6 +633,61 @@ document.addEventListener('DOMContentLoaded', () => {
       unreadList.innerHTML = `<p class="list-empty">${msg}</p>`;
     }
   }
+
+  // ── Search tab ───────────────────────────────────────────────
+
+  const searchInput   = document.getElementById('search-input');
+  const searchResults = document.getElementById('search-results');
+  let searchTimer     = null;
+
+  function renderSearchResults(links) {
+    searchResults.innerHTML = '';
+    if (links.length === 0) {
+      searchResults.innerHTML = '<p class="list-empty">No links found.</p>';
+      return;
+    }
+    links.forEach(link => {
+      const item = document.createElement('div');
+      item.className = 'link-item';
+      const host = (() => { try { return new URL(link.url).hostname; } catch { return link.url; } })();
+      item.innerHTML = `
+        <div class="search-item-main">
+          <a class="link-title" href="${escHtml(link.url)}" target="_blank">${escHtml(link.title || link.url)}</a>
+          <span class="search-item-host">${escHtml(host)}</span>
+        </div>
+        <button class="link-mark-read" title="${link.read ? 'Mark as unread' : 'Mark as read'}">${link.read ? '↩' : '✓'}</button>
+      `;
+      item.querySelector('.link-mark-read').addEventListener('click', async e => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        try {
+          const r = await fetch(`${API_LINKS}/${link.id}/toggle`, { method: 'PATCH' });
+          if (!r.ok) throw new Error();
+          link.read = !link.read;
+          btn.title = link.read ? 'Mark as unread' : 'Mark as read';
+          btn.textContent = link.read ? '↩' : '✓';
+        } catch { /* ignore */ } finally { btn.disabled = false; }
+      });
+      searchResults.appendChild(item);
+    });
+  }
+
+  async function runSearch(q) {
+    if (!q.trim()) { searchResults.innerHTML = ''; return; }
+    searchResults.innerHTML = '<p class="list-empty">Searching…</p>';
+    try {
+      const res = await fetch(`${API_LINKS}?q=${encodeURIComponent(q)}`);
+      if (!res.ok) throw new Error();
+      renderSearchResults(await res.json());
+    } catch {
+      searchResults.innerHTML = '<p class="list-empty">Could not reach the app.</p>';
+    }
+  }
+
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => runSearch(searchInput.value), 250);
+  });
 
   // ── Chat tab ─────────────────────────────────────────────────
 

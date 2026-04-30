@@ -5,9 +5,10 @@
  *
  * Responsibilities:
  *  1. If the current URL is saved and unread, inject a floating "Mark as read" chip.
- *  2. If the link has user comments, inject draggable sticky notes.
- *     - A toggle button (bottom-left) shows/hides all notes.
- *     - Shown/hidden state and per-note positions are persisted in chrome.storage.local.
+ *  2. If the link has user comments, inject a single draggable sticky note with
+ *     prev/next navigation when there are multiple comments.
+ *     - A toggle button (bottom-left) shows/hides the note.
+ *     - Shown/hidden state and note position are persisted in chrome.storage.local.
  *     - Default: shown when comments exist.
  */
 
@@ -53,28 +54,38 @@ function saveStoredState(url, patch) {
   });
 }
 
-function savePosition(url, commentId, x, y) {
-  return new Promise(resolve => {
-    chrome.storage.local.get(storageKey(url), result => {
-      const state = result[storageKey(url)] || {};
-      const positions = { ...(state.positions || {}), [commentId]: { x, y } };
-      chrome.storage.local.set({ [storageKey(url)]: { ...state, positions } }, resolve);
-    });
-  });
-}
+// ── Single sticky note with prev/next ────────────────────────────────────────
 
-// ── Sticky notes ──────────────────────────────────────────────────────────────
-
-let notesVisible  = true;
-let toggleBtn     = null;
-const noteEls     = new Map(); // commentId → DOM element
-const pageUrl     = window.location.href;
+let noteEl      = null;
+let noteVisible = true;
+let noteIndex   = 0;
+const pageUrl   = window.location.href;
 
 function fmtDate(iso) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function makeDraggable(el, commentId) {
+function renderNoteContent(comments) {
+  if (!noteEl) return;
+  const c     = comments[noteIndex];
+  const multi = comments.length > 1;
+
+  noteEl.querySelector('.haibrid-note-date').textContent  = fmtDate(c.createdAt);
+  noteEl.querySelector('.haibrid-note-text').textContent  = c.text;
+
+  const counter = noteEl.querySelector('.haibrid-note-counter');
+  const prev    = noteEl.querySelector('.haibrid-note-prev');
+  const next    = noteEl.querySelector('.haibrid-note-next');
+
+  counter.textContent  = multi ? `${noteIndex + 1} of ${comments.length}` : '';
+  counter.hidden       = !multi;
+  prev.hidden          = !multi;
+  next.hidden          = !multi;
+  prev.disabled        = noteIndex === 0;
+  next.disabled        = noteIndex === comments.length - 1;
+}
+
+function makeDraggable(el) {
   let startX, startY, startLeft, startTop;
 
   const onMove = (e) => {
@@ -86,14 +97,14 @@ function makeDraggable(el, commentId) {
     el.style.top  = newTop  + 'px';
   };
 
-  const onUp = (e) => {
+  const onUp = () => {
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup',   onUp);
     document.removeEventListener('touchmove', onMove);
     document.removeEventListener('touchend',  onUp);
-    const left = parseInt(el.style.left, 10);
-    const top  = parseInt(el.style.top,  10);
-    savePosition(pageUrl, commentId, left, top);
+    saveStoredState(pageUrl, {
+      position: { x: parseInt(el.style.left, 10), y: parseInt(el.style.top, 10) },
+    });
   };
 
   const header = el.querySelector('.haibrid-note-header');
@@ -118,88 +129,54 @@ function makeDraggable(el, commentId) {
   }, { passive: true });
 }
 
-function createNote(comment, x, y) {
-  const el = document.createElement('div');
-  el.className = 'haibrid-sticky-note';
-  el.style.left = x + 'px';
-  el.style.top  = y + 'px';
-  el.innerHTML = `
+function createNote(comments, x, y) {
+  noteEl = document.createElement('div');
+  noteEl.className  = 'haibrid-sticky-note';
+  noteEl.style.left = x + 'px';
+  noteEl.style.top  = y + 'px';
+  noteEl.innerHTML  = `
     <div class="haibrid-note-header">
-      <span class="haibrid-note-date">${fmtDate(comment.createdAt)}</span>
-      <button class="haibrid-note-close" title="Hide this note">×</button>
+      <span class="haibrid-note-date"></span>
+      <button class="haibrid-note-close" title="Hide note">×</button>
     </div>
-    <p class="haibrid-note-text">${comment.text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+    <p class="haibrid-note-text"></p>
+    <div class="haibrid-note-nav">
+      <button class="haibrid-note-prev" title="Previous">‹</button>
+      <span class="haibrid-note-counter"></span>
+      <button class="haibrid-note-next" title="Next">›</button>
+    </div>
   `;
 
-  el.querySelector('.haibrid-note-close').addEventListener('click', () => {
-    el.remove();
-    noteEls.delete(comment.id);
-    // If all notes are individually closed, mark as hidden
-    if (noteEls.size === 0) {
-      notesVisible = false;
-      updateToggleBtn();
-      saveStoredState(pageUrl, { shown: false });
-    }
+  noteEl.querySelector('.haibrid-note-close').addEventListener('click', () => {
+    noteEl.remove();
+    noteEl      = null;
+    noteVisible = false;
+    saveStoredState(pageUrl, { shown: false });
   });
 
-  makeDraggable(el, comment.id);
-  document.body.appendChild(el);
-  noteEls.set(comment.id, el);
-  return el;
-}
-
-function showNotes(comments, positions) {
-  const cols = Math.ceil(Math.sqrt(comments.length));
-  comments.forEach((c, i) => {
-    const stored = positions[c.id];
-    const x = stored ? stored.x : 24 + (i % cols) * 230;
-    const y = stored ? stored.y : 80 + Math.floor(i / cols) * 160;
-    createNote(c, x, y);
+  noteEl.querySelector('.haibrid-note-prev').addEventListener('click', () => {
+    if (noteIndex > 0) { noteIndex--; renderNoteContent(comments); }
   });
-}
-
-function hideNotes() {
-  noteEls.forEach(el => el.remove());
-  noteEls.clear();
-}
-
-function updateToggleBtn() {
-  if (!toggleBtn) return;
-  toggleBtn.textContent = notesVisible ? '💬 Hide notes' : '💬 Show notes';
-  toggleBtn.classList.toggle('haibrid-toggle-active', notesVisible);
-}
-
-function injectToggleBtn(comments, positions) {
-  toggleBtn = document.createElement('button');
-  toggleBtn.id = 'haibrid-notes-toggle';
-  toggleBtn.className = 'haibrid-notes-toggle';
-  updateToggleBtn();
-
-  toggleBtn.addEventListener('click', () => {
-    notesVisible = !notesVisible;
-    if (notesVisible) {
-      showNotes(comments, positions);
-    } else {
-      hideNotes();
-    }
-    updateToggleBtn();
-    saveStoredState(pageUrl, { shown: notesVisible });
+  noteEl.querySelector('.haibrid-note-next').addEventListener('click', () => {
+    if (noteIndex < comments.length - 1) { noteIndex++; renderNoteContent(comments); }
   });
 
-  document.body.appendChild(toggleBtn);
+  makeDraggable(noteEl);
+  renderNoteContent(comments);
+  document.body.appendChild(noteEl);
 }
 
 async function initNotes(link) {
   const comments = link.comments || [];
   if (comments.length === 0) return;
 
-  const state     = await getStoredState(pageUrl);
-  const positions = state.positions || {};
-  // Default to shown if no preference stored yet
-  notesVisible    = state.shown !== undefined ? state.shown : true;
+  const state = await getStoredState(pageUrl);
+  noteVisible  = state.shown !== undefined ? state.shown : true;
+  const pos    = state.position || { x: 24, y: 80 };
 
-  injectToggleBtn(comments, positions);
-  if (notesVisible) showNotes(comments, positions);
+  _comments = comments;
+  _position = pos;
+  if (noteVisible) createNote(comments, pos.x, pos.y);
 }
 
 // ── Mark-as-read chip ─────────────────────────────────────────────────────────
@@ -239,7 +216,6 @@ function injectChip() {
 async function handleMarkRead() {
   if (!linkId) return;
   chip.classList.add('haibrid-chip-loading');
-
   try {
     const resp = await bgFetch(`${API_BASE}/${linkId}/toggle`, { method: 'PATCH' });
     if (!resp.ok) throw new Error();
@@ -261,7 +237,6 @@ async function handleUndo() {
 function showToast(message, onUndo) {
   if (toast) toast.remove();
   clearTimeout(undoTimer);
-
   toast = document.createElement('div');
   toast.id = 'haibrid-toast';
   toast.innerHTML = `
@@ -273,7 +248,6 @@ function showToast(message, onUndo) {
     dismissToast();
     onUndo?.();
   });
-
   document.body.appendChild(toast);
   requestAnimationFrame(() => toast.classList.add('haibrid-toast-visible'));
   undoTimer = setTimeout(dismissToast, 4000);
@@ -290,121 +264,96 @@ function dismissToast() {
 const style = document.createElement('style');
 style.textContent = `
   #haibrid-mark-read-chip {
-    position: fixed;
-    bottom: 28px;
-    right: 24px;
-    z-index: 2147483646;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    background: #ffffff;
-    border: 1.5px solid #A7F3D0;
-    border-radius: 24px;
-    padding: 8px 14px 8px 9px;
-    cursor: pointer;
+    position: fixed; bottom: 28px; right: 24px; z-index: 2147483646;
+    display: flex; align-items: center; gap: 7px;
+    background: #ffffff; border: 1.5px solid #A7F3D0; border-radius: 24px;
+    padding: 8px 14px 8px 9px; cursor: pointer;
     box-shadow: 0 4px 16px rgba(15,28,53,0.13);
     transition: box-shadow 0.15s, transform 0.15s, opacity 0.15s;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
-    font-size: 13px;
-    font-weight: 600;
-    color: #059669;
-    user-select: none;
-    opacity: 0.92;
+    font-size: 13px; font-weight: 600; color: #059669;
+    user-select: none; opacity: 0.92;
   }
-  #haibrid-mark-read-chip:hover {
-    box-shadow: 0 6px 20px rgba(5,150,105,0.18);
-    transform: translateY(-2px);
-    opacity: 1;
-  }
+  #haibrid-mark-read-chip:hover { box-shadow: 0 6px 20px rgba(5,150,105,0.18); transform: translateY(-2px); opacity: 1; }
   #haibrid-mark-read-chip:active { transform: translateY(0); }
   #haibrid-mark-read-chip.haibrid-chip-loading { opacity: 0.5; pointer-events: none; }
   .haibrid-chip-icon {
-    width: 22px; height: 22px;
-    border-radius: 50%;
-    background: #059669;
-    color: #ffffff;
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
+    width: 22px; height: 22px; border-radius: 50%; background: #059669; color: #ffffff;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
   .haibrid-chip-icon svg { width: 13px; height: 13px; }
   .haibrid-chip-label { white-space: nowrap; }
 
   #haibrid-toast {
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%) translateY(12px);
-    z-index: 2147483647;
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(12px); z-index: 2147483647;
     display: flex; align-items: center; gap: 12px;
-    background: #1e293b; color: #f1f5f9;
-    border-radius: 10px; padding: 10px 16px;
+    background: #1e293b; color: #f1f5f9; border-radius: 10px; padding: 10px 16px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
-    font-size: 13px; font-weight: 500;
-    box-shadow: 0 8px 24px rgba(15,28,53,0.22);
-    opacity: 0; transition: opacity 0.18s, transform 0.18s;
-    white-space: nowrap;
+    font-size: 13px; font-weight: 500; box-shadow: 0 8px 24px rgba(15,28,53,0.22);
+    opacity: 0; transition: opacity 0.18s, transform 0.18s; white-space: nowrap;
   }
   #haibrid-toast.haibrid-toast-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
-  .haibrid-toast-undo {
-    all: unset; color: #93c5fd; font-size: 13px; font-weight: 600;
-    cursor: pointer; transition: color 0.1s;
-  }
+  .haibrid-toast-undo { all: unset; color: #93c5fd; font-size: 13px; font-weight: 600; cursor: pointer; }
   .haibrid-toast-undo:hover { color: #bfdbfe; }
 
-  /* ── Sticky notes ── */
+  /* ── Sticky note ── */
   .haibrid-sticky-note {
-    position: fixed;
-    z-index: 2147483644;
-    width: 210px;
-    background: #FFFDE7;
-    border: 1px solid #F9E04B;
-    border-radius: 8px;
+    position: fixed; z-index: 2147483644; width: 220px;
+    background: #FFFDE7; border: 1px solid #F9E04B; border-radius: 8px;
     box-shadow: 0 4px 16px rgba(15,28,53,0.14);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
     font-size: 13px;
-    overflow: hidden;
   }
   .haibrid-note-header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 6px 8px 5px;
-    background: #F9E04B;
-    cursor: grab;
-    user-select: none;
+    padding: 6px 8px 5px; background: #F9E04B; border-radius: 8px 8px 0 0;
+    cursor: grab; user-select: none;
   }
   .haibrid-note-header:active { cursor: grabbing; }
   .haibrid-note-date { font-size: 11px; font-weight: 500; color: #7a6a00; }
   .haibrid-note-close {
-    all: unset; font-size: 16px; color: #7a6a00; cursor: pointer;
-    line-height: 1; transition: color 0.1s;
+    all: unset; font-size: 16px; color: #7a6a00; cursor: pointer; line-height: 1;
+    transition: color 0.1s;
   }
   .haibrid-note-close:hover { color: #c53030; }
   .haibrid-note-text {
-    padding: 8px 10px; margin: 0;
-    color: #2d2a00; white-space: pre-wrap;
-    word-break: break-word; line-height: 1.45;
+    padding: 8px 10px; margin: 0; color: #2d2a00;
+    white-space: pre-wrap; word-break: break-word; line-height: 1.45;
   }
+  .haibrid-note-nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 8px 6px; border-top: 1px solid #F9E04B;
+  }
+  .haibrid-note-prev, .haibrid-note-next {
+    all: unset; font-size: 18px; font-weight: 700; color: #7a6a00;
+    cursor: pointer; padding: 0 4px; line-height: 1; transition: color 0.1s;
+  }
+  .haibrid-note-prev:hover, .haibrid-note-next:hover { color: #2d2a00; }
+  .haibrid-note-prev:disabled, .haibrid-note-next:disabled { opacity: 0.3; cursor: default; }
+  .haibrid-note-counter { font-size: 11px; color: #7a6a00; font-weight: 500; }
 
-  /* ── Notes toggle button ── */
-  .haibrid-notes-toggle {
-    position: fixed;
-    bottom: 28px;
-    left: 24px;
-    z-index: 2147483645;
-    background: #ffffff;
-    border: 1.5px solid #E3E8F0;
-    border-radius: 20px;
-    padding: 7px 13px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
-    font-size: 12px; font-weight: 600;
-    color: #344563;
-    cursor: pointer;
-    box-shadow: 0 4px 12px rgba(15,28,53,0.10);
-    transition: box-shadow 0.15s, transform 0.15s;
-    user-select: none;
-  }
-  .haibrid-notes-toggle:hover { box-shadow: 0 6px 16px rgba(15,28,53,0.15); transform: translateY(-1px); }
-  .haibrid-notes-toggle.haibrid-toggle-active { border-color: #DBEAFE; color: #2563EB; background: #EFF6FF; }
 `;
 document.head.appendChild(style);
+
+// ── Message listener (from popup) ────────────────────────────────────────────
+// Listens for TOGGLE_NOTE messages sent by the popup's show/hide button.
+// Responds with the current visibility state so the popup can update its label.
+let _comments = null; // retain for re-show after hide
+let _position = null;
+
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.type !== 'TOGGLE_NOTE') return;
+  noteVisible = !noteVisible;
+  if (noteVisible && _comments) {
+    const pos = _position || { x: 24, y: 80 };
+    createNote(_comments, pos.x, pos.y);
+  } else {
+    noteEl?.remove();
+    noteEl = null;
+  }
+  saveStoredState(pageUrl, { shown: noteVisible });
+  sendResponse({ shown: noteVisible });
+});
 
 init();

@@ -21,6 +21,7 @@
     <nav class="tabs">
       <button class="tab active" data-tab="save">Save</button>
       <button class="tab" data-tab="list">Unread</button>
+      <button class="tab" data-tab="search">Search</button>
       <button class="tab" data-tab="chat">Chat</button>
     </nav>
 
@@ -98,7 +99,10 @@
 
         <!-- User comments -->
         <div class="field">
-          <label>Comments</label>
+          <div class="comments-label-row">
+            <label>Comments</label>
+            <button id="notes-toggle-btn" class="btn-ghost btn-xs" title="Show or hide the sticky note on this page">💬 Hide note</button>
+          </div>
           <div id="comments-list" class="comments-list"></div>
           <div class="comment-form">
             <input
@@ -115,6 +119,19 @@
       </div>
 
       <div id="status" class="status" hidden></div>
+    </div>
+
+    <!-- Search tab -->
+    <div id="tab-search" class="tab-panel" hidden>
+      <div class="search-tab-input-wrap">
+        <input
+          id="search-input"
+          type="text"
+          placeholder="Search links…"
+          autocomplete="off"
+        />
+      </div>
+      <div id="search-results" class="search-results"></div>
     </div>
 
     <!-- Unread tab -->

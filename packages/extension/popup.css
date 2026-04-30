@@ -756,3 +756,45 @@ button:disabled { opacity: 0.55; cursor: default; box-shadow: none; }
   flex: 1;
   margin: 0;
 }
+
+.comments-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.comments-label-row label { margin-bottom: 0; }
+.btn-xs {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+/* ── Search tab ───────────────────────────────────────────── */
+.search-tab-input-wrap {
+  padding: 10px 12px 6px;
+}
+.search-tab-input-wrap input {
+  width: 100%;
+  margin: 0;
+  box-sizing: border-box;
+}
+.search-results {
+  overflow-y: auto;
+  max-height: 300px;
+  padding: 0 4px 8px;
+}
+.search-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+.search-item-host {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
