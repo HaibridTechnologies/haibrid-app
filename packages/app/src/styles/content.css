@@ -1,0 +1,247 @@
+/* ════════════════════════════════════════════════════════════════════
+   CONTENT PAGE
+══════════════════════════════════════════════════════════════════════ */
+.content-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border-light);
+  transition: background 0.12s;
+}
+.content-row:last-child { border-bottom: none; }
+.content-row:hover { background: var(--hover-bg); }
+
+.content-row-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.content-row-error { font-size: 11px; color: var(--danger); margin-top: 2px; }
+.content-row-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.content-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.content-badge.parsed  { background: var(--success-light); color: var(--success); border: 1px solid var(--success-border); }
+.content-badge.pending { background: var(--warning-light);  color: var(--warning); border: 1px solid var(--warning-border); }
+.content-badge.failed  { background: var(--danger-light);   color: var(--danger);  border: 1px solid var(--danger-border); }
+
+.content-action-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.content-action-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+.content-action-btn:disabled { opacity: 0.45; cursor: default; }
+.content-action-btn.danger:hover { border-color: var(--danger); color: var(--danger); background: var(--danger-light); }
+
+.content-viewer-dialog {
+  max-width: 720px;
+  width: 100%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.content-viewer-title {
+  font-size: 14px;
+  font-weight: 600;
+  max-width: 580px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: -0.15px;
+}
+.content-viewer-body { flex: 1; overflow-y: auto; padding: 18px 22px; }
+.content-viewer-notice {
+  font-size: 12px;
+  color: var(--warning);
+  background: var(--warning-light);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius);
+  padding: 7px 12px;
+  margin-bottom: 12px;
+}
+.content-viewer-text {
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.content-viewer-loading,
+.content-viewer-error {
+  font-size: 13px;
+  color: var(--muted-light);
+  text-align: center;
+  padding: 40px 0;
+}
+
+/* ── LinkModal — user comments ───────────────────────────── */
+.link-modal-comments {
+  padding: 14px 22px 16px;
+  border-top: 1px solid var(--border-light);
+}
+.link-modal-comments-empty {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 6px 0 10px;
+}
+.link-modal-comment {
+  background: var(--surface-2);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+.link-modal-comment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.link-modal-comment-date {
+  font-size: 11px;
+  color: var(--muted-light);
+}
+.link-modal-comment-delete {
+  all: unset;
+  font-size: 15px;
+  color: var(--muted-light);
+  cursor: pointer;
+  line-height: 1;
+  transition: color 0.12s;
+}
+.link-modal-comment-delete:hover { color: var(--danger); }
+.link-modal-comment-text {
+  font-size: 13px;
+  color: var(--text-2);
+  margin: 0;
+  white-space: pre-wrap;
+}
+.link-modal-comment-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.link-modal-comment-input {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+}
+.link-modal-comment-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.10);
+}
+
+/* ── LinkModal — feedback / comments section ─────────────── */
+.link-modal-feedback-section {
+  border-top: 1px solid var(--border-light);
+  margin-top: 8px;
+}
+
+.link-modal-feedback-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 10px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  margin: 0;
+  transition: color 0.12s;
+}
+.link-modal-feedback-toggle:hover { color: var(--text-2); background: none; }
+
+.feedback-toggle-arrow {
+  font-size: 10px;
+  color: var(--muted-light);
+}
+
+.link-modal-feedback-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 12px;
+}
+
+.feedback-loading,
+.feedback-empty {
+  font-size: 13px;
+  color: var(--muted-light);
+  text-align: center;
+  padding: 16px 0;
+}
+
+.feedback-item {
+  background: var(--surface-2);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.feedback-item-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.feedback-decision-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+.feedback-decision-badge.keep { background: var(--success-light); color: var(--success); }
+.feedback-decision-badge.drop { background: var(--danger-light);  color: var(--danger);  }
+
+.feedback-date {
+  font-size: 11px;
+  color: var(--muted-light);
+  margin-left: auto;
+}
+
+.feedback-reason {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.feedback-comment {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.content-viewer-error { color: var(--danger); }

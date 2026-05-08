@@ -3,6 +3,15 @@ import { fmtDate } from '../../utils/date'
 import { updateLinkTitle } from '../../api/linksApi'
 import ProjectTagEditor from './ProjectTagEditor'
 
+/** Format total dwell seconds into a compact human-readable string. */
+function fmtDwell(seconds) {
+  if (!seconds || seconds < 60) return null          // not enough to be meaningful
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
+}
+
 function safeUrl(url) {
   try { new URL(url); return url } catch { return '#' }
 }
@@ -85,6 +94,11 @@ export default function LinkItem({ link, allProjects = [], onToggle, onDelete, o
           <span className="read-toggle-action">{link.read ? 'Mark unread' : 'Mark as read'}</span>
         </button>
         <span className="meta-date">Added {fmtDate(link.createdAt)}</span>
+        {fmtDwell(link.totalDwellSeconds) && (
+          <span className="dwell-badge" title={`${link.totalDwellSeconds}s total time on page`}>
+            🕐 {fmtDwell(link.totalDwellSeconds)}
+          </span>
+        )}
         <button className="details-btn" title="View details" onClick={() => onDetails(link)}>
           ⓘ
         </button>

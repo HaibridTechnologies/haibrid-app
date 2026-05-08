@@ -199,6 +199,7 @@ async function flushVisit(tabId) {
   } catch {
     // Server not available — discard silently
   }
+
 }
 
 /**

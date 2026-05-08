@@ -1,6 +1,7 @@
 'use strict';
-const fs   = require('fs');
-const path = require('path');
+const fs    = require('fs');
+const path  = require('path');
+const { Mutex } = require('async-mutex');
 
 // All JSON data files live alongside this package root
 const ROOT = path.join(__dirname, '..');
@@ -22,9 +23,25 @@ function readJson(filePath, fallback) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
-/** Serialise `data` to a JSON file with 2-space indentation. */
+/**
+ * One mutex per data file — prevents interleaved read-modify-write cycles
+ * from concurrent requests corrupting JSON state.
+ */
+const mutexes = {};
+function getMutex(filePath) {
+  if (!mutexes[filePath]) mutexes[filePath] = new Mutex();
+  return mutexes[filePath];
+}
+
+/**
+ * Serialise `data` to a JSON file with 2-space indentation.
+ * Returns a Promise that resolves once the write is complete and the
+ * mutex is released, so callers can await it when ordering matters.
+ */
 function writeJson(filePath, data) {
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  return getMutex(filePath).runExclusive(() => {
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  });
 }
 
 // ─── Domain readers / writers ─────────────────────────────────────────────────

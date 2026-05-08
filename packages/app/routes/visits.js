@@ -8,6 +8,7 @@ const {
   readVisitFilters, writeVisitFilters,
 } = require('../lib/storage');
 const { evaluateVisits } = require('../lib/evaluateVisits');
+const { readLinks, writeLinks } = require('../lib/storage');
 const { visits: visitsConfig } = require('../lib/config');
 
 const MAX_AGE_DAYS = visitsConfig.maxAgeDays;
@@ -70,14 +71,13 @@ router.get('/', (req, res) => {
 // ─── POST /api/visits ─────────────────────────────────────────────────────────
 // Called by the extension background worker when a meaningful visit completes.
 // Body: { url, title, domain, dwellSeconds, visitedAt }
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { url, title, domain, dwellSeconds, visitedAt } = req.body;
   if (!url) return res.status(400).json({ error: 'url is required' });
 
   let visits = readVisits();
-
   visits.unshift({
-    id:           Date.now().toString(),
+    id:           require('crypto').randomUUID(),
     url,
     title:        title || '',
     domain:       domain || '',
@@ -85,22 +85,21 @@ router.post('/', (req, res) => {
     visitedAt:    visitedAt || new Date().toISOString(),
   });
 
-  writeVisits(visits);
+  await writeVisits(visits);
   res.status(201).json({ ok: true });
 });
 
 // ─── DELETE /api/visits/:id ───────────────────────────────────────────────────
 // Delete a single visit by id.
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   const visits = readVisits().filter(v => v.id !== req.params.id);
-  writeVisits(visits);
+  await writeVisits(visits);
   res.status(204).end();
 });
 
 // ─── DELETE /api/visits ───────────────────────────────────────────────────────
-// Clear all visit history.
-router.delete('/', (req, res) => {
-  writeVisits([]);
+router.delete('/', async (req, res) => {
+  await writeVisits([]);
   res.status(204).end();
 });
 
@@ -113,7 +112,7 @@ router.get('/pending', (req, res) => {
 
 // ─── POST /api/visits/pending ─────────────────────────────────────────────────
 // Called by the extension for visits not matching the allow or block list.
-router.post('/pending', (req, res) => {
+router.post('/pending', async (req, res) => {
   const { url, title, domain, dwellSeconds, visitedAt } = req.body;
   if (!url) return res.status(400).json({ error: 'url is required' });
 
@@ -123,7 +122,7 @@ router.post('/pending', (req, res) => {
   if (pending.some(v => v.url === url)) return res.status(200).json({ ok: true, duplicate: true });
 
   pending.unshift({
-    id:          Date.now().toString(),
+    id:          require('crypto').randomUUID(),
     url,
     title:       title || '',
     domain:      domain || '',
@@ -132,7 +131,7 @@ router.post('/pending', (req, res) => {
     queuedAt:    new Date().toISOString(),
   });
 
-  writeVisitsPending(pending);
+  await writeVisitsPending(pending);
   res.status(201).json({ ok: true });
 });
 
@@ -178,11 +177,28 @@ router.post('/pending/evaluate', async (req, res) => {
     let visits = readVisits();
     visits = pruneOldVisits([...kept, ...visits]);
     visits = deduplicateVisits(visits);
-    writeVisits(visits);
+    await writeVisits(visits);
+  }
+
+  // ── Accumulate dwell time on matching saved links ─────────────────────────
+  // All pending visits (kept AND dropped) contribute to dwell — the LLM
+  // decision is about history relevance, not engagement.
+  {
+    const links = readLinks();
+    const urlMap = new Map(links.map(l => [l.url, l]));
+    let changed = false;
+    for (const visit of pending) {
+      const link = urlMap.get(visit.url);
+      if (!link || !visit.dwellSeconds) continue;
+      link.totalDwellSeconds = (link.totalDwellSeconds || 0) + Math.round(visit.dwellSeconds);
+      changed = true;
+    }
+    if (changed) await writeLinks(links);
+    logger.log(`[POST /pending/evaluate] Dwell updated for ${pending.filter(v => urlMap.has(v.url)).length} saved link(s)`);
   }
 
   // Clear the pending queue
-  writeVisitsPending([]);
+  await writeVisitsPending([]);
 
   logger.log(`[POST /pending/evaluate] Complete — kept: ${kept.length}, dropped: ${dropped.length}`);
   res.json({ kept: kept.length, dropped: dropped.length, results });
@@ -190,8 +206,8 @@ router.post('/pending/evaluate', async (req, res) => {
 
 // ─── DELETE /api/visits/pending ───────────────────────────────────────────────
 // Discard the entire pending queue without evaluating.
-router.delete('/pending', (req, res) => {
-  writeVisitsPending([]);
+router.delete('/pending', async (req, res) => {
+  await writeVisitsPending([]);
   res.status(204).end();
 });
 
@@ -202,7 +218,7 @@ router.get('/filters', (req, res) => {
 
 // ─── PUT /api/visits/filters ──────────────────────────────────────────────────
 // Body: { blockList, allowList, minDwellSeconds, evaluationPrompt }
-router.put('/filters', (req, res) => {
+router.put('/filters', async (req, res) => {
   const { blockList, allowList, minDwellSeconds, evaluationPrompt } = req.body;
 
   // Normalise an entry: if someone pastes a full URL, extract just the hostname.
@@ -225,7 +241,7 @@ router.put('/filters', (req, res) => {
     minDwellSeconds:  Number.isFinite(Number(minDwellSeconds)) ? Number(minDwellSeconds) : visitsConfig.minDwellSeconds,
     evaluationPrompt: typeof evaluationPrompt === 'string' ? evaluationPrompt : '',
   };
-  writeVisitFilters(filters);
+  await writeVisitFilters(filters);
   res.json(filters);
 });
 

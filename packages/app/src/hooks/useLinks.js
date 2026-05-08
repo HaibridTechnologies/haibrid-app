@@ -20,6 +20,7 @@ export function useLinks({ projectId = null, mode = 'reading-list', readFilter =
   const [allLinks, setAllLinks] = useState([])
   const [isAdding, setIsAdding] = useState(false)
   const [search, setSearch]     = useState('')
+  const [sortBy, setSortBy]     = useState('recent') // 'recent' | 'dwell'
 
   /** Build the correct API call for the current view mode. */
   const fetchLinks = useCallback(() => {
@@ -38,23 +39,31 @@ export function useLinks({ projectId = null, mode = 'reading-list', readFilter =
   // Initial fetch whenever mode or projectId changes
   useEffect(() => { load() }, [load])
 
-  /** Client-side filter — instant, no round-trip needed. */
-  const links = allLinks.filter(l => {
-    // In reading-list mode apply the readFilter; other modes show everything fetched
-    if (mode === 'reading-list') {
-      if (readFilter === 'unread' && l.read)  return false
-      if (readFilter === 'read'   && !l.read) return false
-    }
-    if (search) {
-      const q = search.toLowerCase()
-      return (
-        l.url.toLowerCase().includes(q) ||
-        (l.title && l.title.toLowerCase().includes(q)) ||
-        (l.notes && l.notes.toLowerCase().includes(q))
-      )
-    }
-    return true
-  })
+  /** Client-side filter + sort — instant, no round-trip needed. */
+  const links = allLinks
+    .filter(l => {
+      // In reading-list mode apply the readFilter; other modes show everything fetched
+      if (mode === 'reading-list') {
+        if (readFilter === 'unread' && l.read)  return false
+        if (readFilter === 'read'   && !l.read) return false
+      }
+      if (search) {
+        const q = search.toLowerCase()
+        return (
+          l.url.toLowerCase().includes(q) ||
+          (l.title && l.title.toLowerCase().includes(q)) ||
+          (l.notes && l.notes.toLowerCase().includes(q))
+        )
+      }
+      return true
+    })
+    .sort((a, b) => {
+      if (sortBy === 'dwell') {
+        return (b.totalDwellSeconds || 0) - (a.totalDwellSeconds || 0)
+      }
+      // 'recent' — preserve server order (newest first by createdAt)
+      return new Date(b.createdAt) - new Date(a.createdAt)
+    })
 
   const handleSearchChange = useCallback((value) => {
     setSearch(value)
@@ -144,5 +153,5 @@ export function useLinks({ projectId = null, mode = 'reading-list', readFilter =
     setAllLinks(prev => prev.map(l => l.id === updated.id ? { ...l, title: updated.title } : l))
   }, [])
 
-  return { links, isAdding, add, toggle, remove, updateProjects, updateTitle, handleSearchChange, reload: load }
+  return { links, isAdding, add, toggle, remove, updateProjects, updateTitle, handleSearchChange, sortBy, setSortBy, reload: load }
 }

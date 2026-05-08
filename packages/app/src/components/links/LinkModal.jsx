@@ -1,62 +1,55 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { getLink, updateLinkTitle, refreshCitations, addComment, deleteComment } from '../../api/linksApi'
+import { getLink, updateLinkTitle, updateLinkNotes, toggleLink } from '../../api/linksApi'
 import { getContent, saveContent } from '../../api/contentApi'
 import { getFeedback } from '../../api/visitsApi'
 import { fmtDate } from '../../utils/date'
+import CitationBadge from './CitationBadge'
+import CommentsSection from './CommentsSection'
+
+/** Format total dwell seconds into a compact human-readable string. */
+function fmtDwell(seconds) {
+  if (!seconds || seconds < 60) return null
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  return h > 0 ? `${h}h ${m}m` : `${m}m`
+}
 
 /**
  * Detail modal for a single link.
  *
- * Layout when a PDF is available:
- *   ┌─ header (title + close) ──────────────────────┐
- *   │  metadata strip (url, notes, date)             │
- *   │  tab bar  [ Content ]  [ PDF ]                 │
- *   ├───────────────────────────────────────────────┤
- *   │  Content tab: abstract → AI summary → text    │  ← scrollable
- *   │  PDF tab    : iframe fills remaining height   │  ← fixed
- *   └───────────────────────────────────────────────┘
- *
- * When no PDF exists the tab bar is hidden and only the content panel shows.
- *
- * @param {Object}   link           - Link object from the reading list
- * @param {Function} onClose        - Called when the modal should be dismissed
- * @param {Function} onLinkUpdated  - Called with the updated link whenever its
- *                                    contentStatus changes so parent stays in sync
+ * @param {Object}     link           - Link object from the reading list
+ * @param {Object[]}   allProjects    - Full project list for rendering project chips
+ * @param {Function}   onClose        - Called when the modal should be dismissed
+ * @param {Function}   onLinkUpdated  - Called with the updated link on any change
  */
-export default function LinkModal({ link: initialLink, onClose, onLinkUpdated }) {
+export default function LinkModal({ link: initialLink, allProjects = [], onClose, onLinkUpdated }) {
   const [link, setLink]                     = useState(initialLink)
   const [content, setContent]               = useState(null)
   const [contentLoading, setContentLoading] = useState(false)
   const [contentError, setContentError]     = useState(null)
   const [saving, setSaving]                 = useState(false)
-  const [citationRefreshing, setCitationRefreshing] = useState(false)
-  const [citationTooltip,    setCitationTooltip]    = useState(false)
   const [activeTab, setActiveTab]           = useState('content')
-  const [feedback, setFeedback]             = useState(null)   // null=not loaded, []=loaded
+  const [feedback, setFeedback]             = useState(null)
   const [feedbackOpen, setFeedbackOpen]     = useState(false)
-  const [editingTitle, setEditingTitle]     = useState(false)
-  const [titleDraft,   setTitleDraft]       = useState(initialLink.title)
-  const [commentDraft, setCommentDraft]     = useState('')
-  const [commentSaving, setCommentSaving]   = useState(false)
-  const titleInputRef                       = useRef(null)
-  const commentInputRef                     = useRef(null)
-  const pollRef                             = useRef(null)
 
-  // Auto-fetch citation count on open for arxiv links that don't have one yet
+  // Title editing
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft,   setTitleDraft]   = useState(initialLink.title)
+  const titleInputRef                   = useRef(null)
+
+  // Notes editing
+  const [editingNotes, setEditingNotes] = useState(false)
+  const [notesDraft,   setNotesDraft]   = useState(initialLink.notes || '')
+  const notesInputRef                   = useRef(null)
+
+  const pollRef = useRef(null)
+
   const isArxiv = useMemo(() => /arxiv\.org/i.test(link.url), [link.url])
-  useEffect(() => {
-    if (!isArxiv || link.citationCount != null) return
-    refreshCitations(link.id)
-      .then(updated => updateLink(updated))
-      .catch(() => {})
-  }, [isArxiv, link.id, link.citationCount]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Switch to PDF tab automatically the first time a pdfFile appears
   const prevPdfRef = useRef(initialLink.pdfFile)
   useEffect(() => {
-    if (link.pdfFile && !prevPdfRef.current) {
-      setActiveTab('pdf')
-    }
+    if (link.pdfFile && !prevPdfRef.current) setActiveTab('pdf')
     prevPdfRef.current = link.pdfFile
   }, [link.pdfFile])
 
@@ -99,78 +92,60 @@ export default function LinkModal({ link: initialLink, onClose, onLinkUpdated })
     onLinkUpdated?.(updated)
   }
 
+  // ── Title editing ──────────────────────────────────────────────────────────
   const startTitleEdit = () => {
     setTitleDraft(link.title)
     setEditingTitle(true)
-    setTimeout(() => { titleInputRef.current?.select() }, 0)
+    setTimeout(() => titleInputRef.current?.select(), 0)
   }
-
   const commitTitle = async () => {
     const trimmed = titleDraft.trim()
     setEditingTitle(false)
     if (!trimmed || trimmed === link.title) return
-    try {
-      const updated = await updateLinkTitle(link.id, trimmed)
-      updateLink(updated)
-    } catch {}
+    try { updateLink(await updateLinkTitle(link.id, trimmed)) } catch {}
+  }
+  const cancelTitle = () => { setEditingTitle(false); setTitleDraft(link.title) }
+
+  // ── Notes editing ──────────────────────────────────────────────────────────
+  const startNotesEdit = () => {
+    setNotesDraft(link.notes || '')
+    setEditingNotes(true)
+    setTimeout(() => notesInputRef.current?.focus(), 0)
+  }
+  const commitNotes = async () => {
+    setEditingNotes(false)
+    if (notesDraft === (link.notes || '')) return
+    try { updateLink(await updateLinkNotes(link.id, notesDraft)) } catch {}
+  }
+  const cancelNotes = () => { setEditingNotes(false); setNotesDraft(link.notes || '') }
+
+  // ── Read toggle ────────────────────────────────────────────────────────────
+  const handleToggleRead = async () => {
+    try { updateLink(await toggleLink(link.id)) } catch {}
   }
 
-  const cancelTitle = () => {
-    setEditingTitle(false)
-    setTitleDraft(link.title)
-  }
-
-  const handleRefreshCitations = async () => {
-    setCitationRefreshing(true)
-    try {
-      const updated = await refreshCitations(link.id)
-      updateLink(updated)
-    } catch {}
-    setCitationRefreshing(false)
-  }
-
+  // ── Feedback ───────────────────────────────────────────────────────────────
   const toggleFeedback = async () => {
     if (!feedbackOpen && feedback === null) {
-      try {
-        const items = await getFeedback(link.url)
-        setFeedback(items)
-      } catch {
-        setFeedback([])
-      }
+      try { setFeedback(await getFeedback(link.url)) }
+      catch { setFeedback([]) }
     }
     setFeedbackOpen(o => !o)
   }
 
+  // ── Save content ───────────────────────────────────────────────────────────
   const handleSaveContent = async () => {
     setSaving(true)
-    try {
-      const updated = await saveContent(link.id)
-      updateLink(updated)
-    } catch (_) {}
+    try { updateLink(await saveContent(link.id)) } catch {}
     setSaving(false)
   }
 
-  const handleAddComment = async () => {
-    const text = commentDraft.trim()
-    if (!text) return
-    setCommentSaving(true)
-    try {
-      const updated = await addComment(link.id, text)
-      updateLink(updated)
-      setCommentDraft('')
-    } catch {}
-    setCommentSaving(false)
-  }
-
-  const handleDeleteComment = async (commentId) => {
-    try {
-      await deleteComment(link.id, commentId)
-      updateLink({ ...link, comments: (link.comments || []).filter(c => c.id !== commentId) })
-    } catch {}
-  }
-
-  const hasPdf  = Boolean(link.pdfFile)
+  const hasPdf   = Boolean(link.pdfFile)
   const showTabs = link.contentStatus === 'parsed' && hasPdf
+  const dwell    = fmtDwell(link.totalDwellSeconds)
+
+  // Projects that belong to this link
+  const linkProjects = allProjects.filter(p => (link.projects || []).includes(p.id))
 
   return (
     <div className="dialog-overlay" onClick={onClose}>
@@ -216,88 +191,73 @@ export default function LinkModal({ link: initialLink, onClose, onLinkUpdated })
         {/* ── Metadata strip ──────────────────────────────────────── */}
         <div className="link-modal-meta-strip">
           <div className="link-modal-url">{link.url}</div>
-          {link.notes && <div className="link-modal-notes">{link.notes}</div>}
+
+          {/* Notes — click to edit inline */}
+          {editingNotes ? (
+            <textarea
+              ref={notesInputRef}
+              className="link-modal-notes-input"
+              value={notesDraft}
+              rows={2}
+              placeholder="Add notes…"
+              onChange={e => setNotesDraft(e.target.value)}
+              onBlur={commitNotes}
+              onKeyDown={e => {
+                if (e.key === 'Escape') cancelNotes()
+                if (e.key === 'Enter' && e.metaKey) commitNotes()
+              }}
+            />
+          ) : (
+            <div
+              className={`link-modal-notes${link.notes ? '' : ' link-modal-notes-empty'}`}
+              onClick={startNotesEdit}
+              title="Click to edit notes"
+            >
+              {link.notes || 'Add notes…'}
+            </div>
+          )}
+
+          {/* Dates + dwell row */}
           <div className="link-modal-meta-row">
             <div className="link-modal-meta">
               Added {fmtDate(link.createdAt)}
               {link.contentParsedAt && ` · Content saved ${fmtDate(link.contentParsedAt)}`}
+              {dwell && ` · ${dwell} on page`}
             </div>
 
-            {/* Citation count — arxiv links only */}
-            {isArxiv && (
-              <div
-                className="citation-count-wrap"
-                onMouseEnter={() => setCitationTooltip(true)}
-                onMouseLeave={() => setCitationTooltip(false)}
+            <div className="link-modal-meta-right">
+              {isArxiv && <CitationBadge link={link} onLinkUpdated={updateLink} />}
+
+              {/* Read/Unread toggle */}
+              <button
+                className={`link-modal-read-btn${link.read ? ' is-read' : ''}`}
+                onClick={handleToggleRead}
+                title={link.read ? 'Mark as unread' : 'Mark as read'}
               >
-                {link.citationCount != null ? (
-                  <span className="citation-count">
-                    {link.citationCount.toLocaleString()} citations
-                  </span>
-                ) : (
-                  <span className="citation-count citation-count-loading">
-                    {citationRefreshing ? 'Fetching citations…' : '— citations'}
-                  </span>
-                )}
-                {citationTooltip && link.citationCount != null && (
-                  <div className="citation-tooltip">
-                    <div className="citation-tooltip-date">
-                      Last updated {new Date(link.citationCountAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </div>
-                    <button
-                      className="citation-refresh-btn"
-                      onClick={handleRefreshCitations}
-                      disabled={citationRefreshing}
-                    >
-                      {citationRefreshing ? 'Refreshing…' : '↻ Refresh'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+                {link.read ? 'Read' : 'Unread'}
+              </button>
+            </div>
           </div>
+
+          {/* Project chips */}
+          {linkProjects.length > 0 && (
+            <div className="link-modal-projects">
+              {linkProjects.map(p => (
+                <span
+                  key={p.id}
+                  className="link-modal-project-chip"
+                  style={{ borderColor: p.color, color: p.color }}
+                >
+                  <span className="link-modal-project-dot" style={{ background: p.color }} />
+                  {p.name}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ── User comments ───────────────────────────────────────── */}
-        <div className="link-modal-comments">
-          <div className="link-modal-section-label">Comments</div>
-          {(link.comments || []).length === 0 && (
-            <p className="link-modal-comments-empty">No comments yet.</p>
-          )}
-          {(link.comments || []).map(c => (
-            <div key={c.id} className="link-modal-comment">
-              <div className="link-modal-comment-header">
-                <span className="link-modal-comment-date">{fmtDate(c.createdAt)}</span>
-                <button
-                  className="link-modal-comment-delete"
-                  onClick={() => handleDeleteComment(c.id)}
-                  title="Delete comment"
-                >
-                  ×
-                </button>
-              </div>
-              <p className="link-modal-comment-text">{c.text}</p>
-            </div>
-          ))}
-          <div className="link-modal-comment-form">
-            <input
-              ref={commentInputRef}
-              className="link-modal-comment-input"
-              type="text"
-              placeholder="Add a comment…"
-              value={commentDraft}
-              onChange={e => setCommentDraft(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAddComment()}
-            />
-            <button
-              className="primary btn-sm"
-              onClick={handleAddComment}
-              disabled={commentSaving || !commentDraft.trim()}
-            >
-              {commentSaving ? '…' : 'Add'}
-            </button>
-          </div>
-        </div>
+        <CommentsSection link={link} onLinkUpdated={updateLink} />
 
         {/* ── Tab bar (only when PDF is available) ────────────────── */}
         {showTabs && (
@@ -330,7 +290,6 @@ export default function LinkModal({ link: initialLink, onClose, onLinkUpdated })
                 Open in new tab ↗
               </a>
             </div>
-
             <iframe
               src={`/${link.pdfFile}`}
               className="link-modal-pdf-frame-full"
@@ -344,16 +303,19 @@ export default function LinkModal({ link: initialLink, onClose, onLinkUpdated })
           <div className="link-modal-body">
             <div className="link-modal-content-section">
 
-              {/* No content yet */}
+              {/* No content yet — extension is the primary path */}
               {!link.contentStatus && (
                 <div className="link-modal-cta">
-                  <p>No page content saved yet.</p>
-                  <button className="primary" onClick={handleSaveContent} disabled={saving}>
-                    {saving ? 'Saving…' : 'Save Page Content'}
-                  </button>
-                  <p className="link-modal-cta-hint">
-                    For best results, use the browser extension on the open page.
+                  <p className="link-modal-cta-primary">
+                    Open this page in your browser and click <strong>Save Content</strong> in the Haibrid extension for best results.
                   </p>
+                  <button
+                    className="btn-ghost btn-sm"
+                    onClick={handleSaveContent}
+                    disabled={saving}
+                  >
+                    {saving ? 'Fetching…' : 'Fetch from server instead'}
+                  </button>
                 </div>
               )}
 
@@ -386,14 +348,12 @@ export default function LinkModal({ link: initialLink, onClose, onLinkUpdated })
                       <p className="link-modal-abstract-text">{link.abstract}</p>
                     </div>
                   )}
-
                   {link.summary && (
                     <div className="link-modal-summary">
                       <div className="link-modal-section-label">AI Summary</div>
                       <p className="link-modal-summary-text">{link.summary}</p>
                     </div>
                   )}
-
                   <div className="link-modal-content">
                     {contentLoading && <p className="content-viewer-loading">Loading…</p>}
                     {contentError   && <p className="content-viewer-error">{contentError}</p>}
@@ -411,17 +371,17 @@ export default function LinkModal({ link: initialLink, onClose, onLinkUpdated })
                 </>
               )}
 
-              {/* ── Comments (feedback from Parse History) ─────────── */}
+              {/* ── Parse History Feedback ──────────────────────────── */}
               <div className="link-modal-feedback-section">
                 <button className="link-modal-feedback-toggle" onClick={toggleFeedback}>
-                  <span>Comments</span>
+                  <span>Parse History Feedback</span>
                   <span className="feedback-toggle-arrow">{feedbackOpen ? '▲' : '▼'}</span>
                 </button>
                 {feedbackOpen && (
                   <div className="link-modal-feedback-list">
                     {feedback === null && <p className="feedback-loading">Loading…</p>}
                     {feedback && feedback.length === 0 && (
-                      <p className="feedback-empty">No comments yet. Add feedback after running Parse History.</p>
+                      <p className="feedback-empty">No feedback yet. Appears after running Parse History.</p>
                     )}
                     {feedback && feedback.map(f => (
                       <div key={f.id} className="feedback-item">

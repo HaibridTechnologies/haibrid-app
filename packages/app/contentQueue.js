@@ -35,12 +35,12 @@ let processing = false;
  * @param {Object} patch  - Fields to merge into the link object
  * @returns {Object|null} - The updated link, or null if the id was not found
  */
-function setLinkContent(linkId, patch) {
+async function setLinkContent(linkId, patch) {
   const links = readLinks();
   const link  = links.find(l => l.id === linkId);
   if (!link) return null;
   Object.assign(link, patch);
-  writeLinks(links);
+  await writeLinks(links);
   return link;
 }
 
@@ -58,7 +58,7 @@ async function processLink(linkId) {
   if (!link) return; // link was deleted while queued — skip silently
 
   // Mark as pending so the UI can show a spinner immediately
-  setLinkContent(linkId, { contentStatus: 'pending', contentError: null });
+  await setLinkContent(linkId, { contentStatus: 'pending', contentError: null });
 
   try {
     let text;
@@ -110,7 +110,7 @@ async function processLink(linkId) {
       console.warn(`[contentQueue] summary failed for ${linkId}:`, summaryErr.message);
     }
 
-    setLinkContent(linkId, {
+    await setLinkContent(linkId, {
       contentStatus:    'parsed',
       contentParsedAt:  new Date().toISOString(),
       contentTruncated: truncated,
@@ -120,7 +120,7 @@ async function processLink(linkId) {
       pdfFile,
     });
   } catch (err) {
-    setLinkContent(linkId, {
+    await setLinkContent(linkId, {
       contentStatus:    'failed',
       contentParsedAt:  null,
       contentTruncated: false,

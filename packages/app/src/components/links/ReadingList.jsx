@@ -32,7 +32,7 @@ export default function ReadingList({ project = null }) {
 
   const [readFilter, setReadFilter] = useState('unread')
 
-  const { links, isAdding, add, toggle, remove, updateProjects, updateTitle, handleSearchChange, reload } = useLinks({
+  const { links, isAdding, add, toggle, remove, updateProjects, updateTitle, handleSearchChange, sortBy, setSortBy, reload } = useLinks({
     projectId: project?.id !== 'unassigned' ? project?.id : null,
     mode,
     readFilter,
@@ -117,6 +117,8 @@ export default function ReadingList({ project = null }) {
         onReadFilterChange={setReadFilter}
         onImport={triggerImport}
         onEnterSelect={enterSelect}
+        sortBy={sortBy}
+        onSortChange={setSortBy}
       />
       <main>
         <div className="list-count">
@@ -149,10 +151,12 @@ export default function ReadingList({ project = null }) {
       {viewingLink && (
         <LinkModal
           link={viewingLink}
+          allProjects={allProjects}
           onClose={() => setViewingLink(null)}
           onLinkUpdated={(updated) => {
-            // Keep the reading list in sync when content status changes inside the modal
             setViewingLink(updated)
+            // Keep the reading list in sync too (title, read status, etc.)
+            reload()
           }}
         />
       )}

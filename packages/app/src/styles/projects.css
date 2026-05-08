@@ -1,0 +1,115 @@
+/* ════════════════════════════════════════════════════════════════════
+   NAV — project breadcrumb
+══════════════════════════════════════════════════════════════════════ */
+.app-nav-divider {
+  color: var(--border);
+  font-size: 16px;
+  padding: 0 4px;
+  user-select: none;
+}
+.app-project-crumb {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 15px 4px 13px;
+  border-bottom: 2px solid transparent;
+  letter-spacing: -0.1px;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   PROJECTS GRID
+══════════════════════════════════════════════════════════════════════ */
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.project-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  display: flex;
+  overflow: hidden;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+.project-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.project-card-accent { width: 4px; flex-shrink: 0; }
+
+.project-card-body {
+  flex: 1;
+  padding: 15px 15px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.project-card-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-card-name-input {
+  font-size: 14px;
+  font-weight: 700;
+  width: 100%;
+  padding: 1px 4px;
+  margin: -1px -4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--accent-light);
+  color: var(--text);
+  outline: none;
+  font-family: inherit;
+}
+
+.project-card-desc {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.project-card-count { font-size: 11px; font-weight: 600; color: var(--muted-light); flex: 1; }
+.project-card-date  { font-size: 11px; color: var(--muted-light); }
+
+.project-card-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.project-card:hover .project-card-actions { opacity: 1; }
+
+.project-action-btn {
+  background: none;
+  border: none;
+  color: var(--muted-light);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+.project-action-btn:hover { color: var(--text-2); background: var(--surface-2); }
+.project-action-btn.danger:hover { color: var(--danger); background: var(--danger-light); }

@@ -1,31 +1,8 @@
-const API_LINKS    = 'http://localhost:3000/api/links';
-const API_PROJECTS = 'http://localhost:3000/api/projects';
-
-// NOTE: This function is intentionally duplicated from packages/app/routes/links.js
-// because the extension runs in a different runtime (browser, no Node modules).
-// If you change URL normalisation logic here, update routes/links.js to match.
-function normaliseUrl(url) {
-  try {
-    const u = new URL(url);
-    if (u.hostname === 'www.youtube.com' || u.hostname === 'youtube.com') {
-      const v = u.searchParams.get('v');
-      if (v) return `https://www.youtube.com/watch?v=${v}`;
-    }
-    if (u.hostname === 'youtu.be') {
-      u.searchParams.delete('t');
-      return u.toString();
-    }
-  } catch (_) {}
-  return url;
-}
-
-const PROJECT_COLORS = [
-  '#2563eb', '#7c3aed', '#059669', '#d97706',
-  '#dc2626', '#0891b2', '#db2777', '#64748b',
-];
-function randomColor() {
-  return PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)];
-}
+import {
+  API_LINKS, API_PROJECTS, API_CHAT,
+  normaliseUrl, randomColor, escHtml, escRegex, truncate,
+} from './popup/utils.js';
+import { renderMarkdown } from './popup/markdown.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   // ── Element refs ─────────────────────────────────────────────
@@ -235,7 +212,12 @@ document.addEventListener('DOMContentLoaded', () => {
       renderComments();
       const hasComments = (existingLink.comments || []).length > 0;
       notesToggleBtn.hidden = !hasComments;
-      if (hasComments) syncNotesToggleBtn(tab.url);
+      if (hasComments) {
+        syncNotesToggleBtn(tab.url);
+      } else {
+        // No comments — remove any stale note-position entry to avoid orphan storage
+        chrome.storage.local.remove(`haibrid:notes:${tab.url}`);
+      }
     }
   });
 
@@ -343,9 +325,15 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
       item.querySelector('.comment-delete').addEventListener('click', async () => {
         try {
+          const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
           await fetch(`${API_LINKS}/${existingLink.id}/comments/${c.id}`, { method: 'DELETE' });
           existingLink.comments = (existingLink.comments || []).filter(x => x.id !== c.id);
           renderComments();
+          // If no comments remain, hide toggle and clean up storage
+          if ((existingLink.comments || []).length === 0) {
+            notesToggleBtn.hidden = true;
+            if (activeTab?.url) chrome.storage.local.remove(`haibrid:notes:${activeTab.url}`);
+          }
         } catch {}
       });
       commentsList.appendChild(item);
@@ -690,8 +678,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const chatInput    = document.getElementById('chat-input');
   const chatSendBtn  = document.getElementById('chat-send');
 
-  const API_CHAT = 'http://localhost:3000/api/chat';
-
   // State for the current chat session
   let chatHistory      = [];    // [{ role, content }]
   let chatLinkId       = null;  // linkId if current page content is saved
@@ -864,76 +850,6 @@ document.addEventListener('DOMContentLoaded', () => {
     chatInput.focus();
   }
 
-  /**
-   * Minimal markdown → HTML renderer for chat bubbles.
-   * Handles: **bold**, *italic*, `code`, ``` code blocks ```,
-   * - / * bullet lists, numbered lists, and line breaks.
-   */
-  function renderMarkdown(text) {
-    // Escape HTML entities first to prevent XSS
-    const esc = s => s
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-
-    // Split into fenced code blocks vs normal text
-    const parts = text.split(/(```[\s\S]*?```)/g);
-    let html = '';
-
-    for (const part of parts) {
-      if (part.startsWith('```') && part.endsWith('```')) {
-        // Fenced code block — strip the backticks and optional language tag
-        const inner = part.slice(3, -3).replace(/^\w*\n?/, '');
-        html += `<pre><code>${esc(inner)}</code></pre>`;
-        continue;
-      }
-
-      // Process line by line for lists, then inline marks
-      const lines = part.split('\n');
-      let inList = false;
-      let listTag = '';
-      let buf = '';
-
-      const flushList = () => {
-        if (inList) { buf += `</${listTag}>`; inList = false; listTag = ''; }
-      };
-
-      for (const line of lines) {
-        const ulMatch = line.match(/^[\s]*[-*]\s+(.*)/);
-        const olMatch = line.match(/^[\s]*\d+\.\s+(.*)/);
-
-        if (ulMatch) {
-          if (!inList || listTag !== 'ul') { flushList(); buf += '<ul>'; inList = true; listTag = 'ul'; }
-          buf += `<li>${inlineMarks(esc(ulMatch[1]))}</li>`;
-        } else if (olMatch) {
-          if (!inList || listTag !== 'ol') { flushList(); buf += '<ol>'; inList = true; listTag = 'ol'; }
-          buf += `<li>${inlineMarks(esc(olMatch[1]))}</li>`;
-        } else {
-          flushList();
-          const trimmed = line.trim();
-          if (trimmed === '') {
-            buf += '<br>';
-          } else {
-            buf += inlineMarks(esc(line)) + '<br>';
-          }
-        }
-      }
-      flushList();
-      html += buf;
-    }
-
-    // Clean up leading/trailing <br>
-    return html.replace(/(<br>)+$/, '').replace(/^(<br>)+/, '');
-  }
-
-  function inlineMarks(s) {
-    return s
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-      .replace(/_([^_]+)_/g, '<em>$1</em>');
-  }
-
   /** Append a message bubble to the chat history UI. */
   function appendMessage(role, text) {
     const wrap = document.createElement('div');
@@ -1068,17 +984,5 @@ document.addEventListener('DOMContentLoaded', () => {
   function hideStatus() {
     statusEl.hidden = true;
     statusEl.className = 'status';
-  }
-  function truncate(str, max) {
-    if (!str) return '';
-    return str.length <= max ? str : str.slice(0, max - 1) + '…';
-  }
-  function escHtml(str) {
-    return String(str)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-  function escRegex(str) {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 });

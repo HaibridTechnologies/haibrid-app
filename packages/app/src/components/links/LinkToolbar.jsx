@@ -24,7 +24,12 @@ const READ_FILTERS = [
   { value: 'read',   label: 'Read' },
 ]
 
-export default function LinkToolbar({ isAdding, onAdd, onSearchChange, project = null, readOnly = false, readFilter = null, onReadFilterChange, onImport, onEnterSelect }) {
+const SORT_OPTIONS = [
+  { value: 'recent', label: 'Recently added' },
+  { value: 'dwell',  label: 'Most visited'   },
+]
+
+export default function LinkToolbar({ isAdding, onAdd, onSearchChange, project = null, readOnly = false, readFilter = null, onReadFilterChange, onImport, onEnterSelect, sortBy = 'recent', onSortChange }) {
   const [url, setUrl]                   = useState('')
   const [notes, setNotes]               = useState('')
   const [selectedProjects, setSelected] = useState(project ? [project.id] : [])
@@ -56,6 +61,20 @@ export default function LinkToolbar({ isAdding, onAdd, onSearchChange, project =
                 onClick={() => onReadFilterChange(f.value)}
               >
                 {f.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {onSortChange && (
+          <div className="sort-tabs">
+            {SORT_OPTIONS.map(s => (
+              <button
+                key={s.value}
+                className={`sort-tab${sortBy === s.value ? ' active' : ''}`}
+                onClick={() => onSortChange(s.value)}
+                title={s.value === 'dwell' ? 'Sort by total time spent on page' : 'Sort by date added'}
+              >
+                {s.label}
               </button>
             ))}
           </div>

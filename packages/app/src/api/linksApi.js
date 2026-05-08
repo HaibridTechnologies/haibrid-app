@@ -56,6 +56,14 @@ export const updateLinkTitle = (id, title) =>
     body:    JSON.stringify({ title }),
   })
 
+/** Update the notes of a link. */
+export const updateLinkNotes = (id, notes) =>
+  request(`/api/links/${id}`, {
+    method:  'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ notes }),
+  })
+
 /** Permanently delete a link. */
 export const deleteLink = (id) =>
   request(`/api/links/${id}`, { method: 'DELETE' })

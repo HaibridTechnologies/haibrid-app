@@ -1,5 +1,6 @@
 'use strict';
 const fs      = require('fs');
+const crypto  = require('crypto');
 const express = require('express');
 const router  = express.Router();
 
@@ -25,12 +26,11 @@ function normaliseUrl(url) {
   try {
     const u = new URL(url);
     if (u.hostname === 'www.youtube.com' || u.hostname === 'youtube.com') {
-      // Keep only the video ID — strip timestamps, playlists, and other params
       const v = u.searchParams.get('v');
       if (v) return `https://www.youtube.com/watch?v=${v}`;
     }
     if (u.hostname === 'youtu.be') {
-      u.searchParams.delete('t'); // strip timestamp
+      u.searchParams.delete('t');
       return u.toString();
     }
   } catch (_) { /* malformed URL — return as-is */ }
@@ -49,7 +49,6 @@ router.get('/', (req, res) => {
   let links = readLinks();
 
   if (project) {
-    // Use the inverted index for O(1) project lookup instead of scanning all links
     const index = readIndex();
     const ids   = new Set(index[project] || []);
     links = links.filter(l => ids.has(l.id));
@@ -86,7 +85,7 @@ router.post('/', async (req, res) => {
 
   const links = readLinks();
   const link  = {
-    id:        Date.now().toString(),
+    id:        crypto.randomUUID(),
     url,
     title:     resolvedTitle,
     notes:     notes || '',
@@ -94,27 +93,26 @@ router.post('/', async (req, res) => {
     projects:  Array.isArray(projects) ? projects : [],
     createdAt: new Date().toISOString(),
   };
-  links.unshift(link); // prepend so newest appears first
-  writeLinks(links);
+  links.unshift(link);
+  await writeLinks(links);
 
-  // Update the inverted index only when the link belongs to one or more projects
   if (link.projects.length > 0) {
     const index = readIndex();
     updateIndex(index, link.id, [], link.projects);
-    writeIndex(index);
+    await writeIndex(index);
   }
 
   // Fire-and-forget citation count lookup for arXiv links
   const arxivId = extractArxivId(url);
   if (arxivId) {
-    fetchCitationCount(arxivId).then(count => {
+    fetchCitationCount(arxivId).then(async count => {
       if (count === null) return;
       const all  = readLinks();
       const saved = all.find(l => l.id === link.id);
       if (!saved) return;
       saved.citationCount   = count;
       saved.citationCountAt = new Date().toISOString();
-      writeLinks(all);
+      await writeLinks(all);
     }).catch(() => {});
   }
 
@@ -123,34 +121,31 @@ router.post('/', async (req, res) => {
 
 // ─── PATCH /api/links/:id ─────────────────────────────────────────────────────
 // Update mutable fields: title and/or notes.
-// Used by the extension rename feature.
-router.patch('/:id', (req, res) => {
+router.patch('/:id', async (req, res) => {
   const links = readLinks();
   const link  = links.find(l => l.id === req.params.id);
   if (!link) return res.status(404).json({ error: 'not found' });
 
   const { title, notes } = req.body;
-  if (title !== undefined) link.title = title.trim() || link.title; // discard empty renames
+  if (title !== undefined) link.title = title.trim() || link.title;
   if (notes !== undefined) link.notes = notes;
-  writeLinks(links);
+  await writeLinks(links);
   res.json(link);
 });
 
 // ─── PATCH /api/links/:id/toggle ─────────────────────────────────────────────
-// Flip the read/unread flag.
-router.patch('/:id/toggle', (req, res) => {
+router.patch('/:id/toggle', async (req, res) => {
   const links = readLinks();
   const link  = links.find(l => l.id === req.params.id);
   if (!link) return res.status(404).json({ error: 'not found' });
 
   link.read = !link.read;
-  writeLinks(links);
+  await writeLinks(links);
   res.json(link);
 });
 
 // ─── PATCH /api/links/:id/projects ───────────────────────────────────────────
-// Replace the full list of project IDs for a link and sync the inverted index.
-router.patch('/:id/projects', (req, res) => {
+router.patch('/:id/projects', async (req, res) => {
   const { projects } = req.body;
   if (!Array.isArray(projects)) return res.status(400).json({ error: 'projects must be an array' });
 
@@ -161,13 +156,12 @@ router.patch('/:id/projects', (req, res) => {
   const index = readIndex();
   updateIndex(index, link.id, link.projects || [], projects);
   link.projects = projects;
-  writeLinks(links);
-  writeIndex(index);
+  await writeLinks(links);
+  await writeIndex(index);
   res.json(link);
 });
 
 // ─── POST /api/links/:id/citations/refresh ───────────────────────────────────
-// Re-fetch citation count from Semantic Scholar for an arXiv link.
 router.post('/:id/citations/refresh', async (req, res) => {
   const links = readLinks();
   const link  = links.find(l => l.id === req.params.id);
@@ -181,14 +175,34 @@ router.post('/:id/citations/refresh', async (req, res) => {
 
   link.citationCount   = count;
   link.citationCountAt = new Date().toISOString();
-  writeLinks(links);
+  await writeLinks(links);
   res.json(link);
 });
 
-// ─── GET /api/links/export ───────────────────────────────────────────────────
-// Download all links as a JSON file.
-router.get('/export', (req, res) => {
+// ─── POST /api/links/dwell ────────────────────────────────────────────────────
+// Called by the extension background worker whenever a saved page is visited.
+// Accumulates dwell time on the link so it can be ranked by engagement.
+// Body: { url, dwellSeconds }
+// No-op (200 ok:false) if the URL is not a saved link — caller can ignore.
+router.post('/dwell', async (req, res) => {
+  const { url: rawUrl, dwellSeconds } = req.body;
+  if (!rawUrl || !Number.isFinite(Number(dwellSeconds)) || dwellSeconds <= 0) {
+    return res.status(400).json({ error: 'url and positive dwellSeconds are required' });
+  }
+
+  const url   = normaliseUrl(rawUrl);
   const links = readLinks();
+  const link  = links.find(l => l.url === url);
+  if (!link) return res.json({ ok: false }); // URL not saved — silent no-op
+
+  link.totalDwellSeconds = (link.totalDwellSeconds || 0) + Math.round(dwellSeconds);
+  await writeLinks(links);
+  res.json({ ok: true, totalDwellSeconds: link.totalDwellSeconds });
+});
+
+// ─── GET /api/links/export ───────────────────────────────────────────────────
+router.get('/export', (req, res) => {
+  const links    = readLinks();
   const filename = `haibrid-export-${new Date().toISOString().slice(0, 10)}.json`;
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.setHeader('Content-Type', 'application/json');
@@ -202,14 +216,14 @@ router.get('/export', (req, res) => {
 //   - Existing URL + project tags → merge the project tags onto the existing link
 //   - Existing URL, no project tags → skip
 // Returns { added, tagged, skipped } counts.
-router.post('/import', (req, res) => {
+router.post('/import', async (req, res) => {
   const incoming = req.body?.links;
   if (!Array.isArray(incoming)) return res.status(400).json({ error: 'links array required' });
 
-  const existing  = readLinks();
-  const urlToLink = new Map(existing.map(l => [l.url, l]));
+  const existing    = readLinks();
+  const urlToLink   = new Map(existing.map(l => [l.url, l]));
   const seenInBatch = new Set();
-  const index = readIndex();
+  const index       = readIndex();
 
   let added = 0, tagged = 0, skipped = 0;
   const toAdd = [];
@@ -221,7 +235,6 @@ router.post('/import', (req, res) => {
     const newProjects = Array.isArray(link.projects) ? link.projects : [];
 
     if (urlToLink.has(url)) {
-      // URL already saved — merge project tags if any were requested
       if (newProjects.length === 0) { skipped++; continue; }
       const saved  = urlToLink.get(url);
       const before = saved.projects || [];
@@ -234,7 +247,7 @@ router.post('/import', (req, res) => {
     } else if (!seenInBatch.has(url)) {
       seenInBatch.add(url);
       toAdd.push({
-        id:        Date.now().toString() + '-' + added,
+        id:        crypto.randomUUID(),
         url,
         title:     link.title || url,
         notes:     link.notes || '',
@@ -250,16 +263,15 @@ router.post('/import', (req, res) => {
   }
 
   if (toAdd.length > 0 || dirty) {
-    writeLinks([...toAdd.reverse(), ...existing]);
-    writeIndex(index);
+    await writeLinks([...toAdd.reverse(), ...existing]);
+    await writeIndex(index);
   }
 
   res.json({ added, tagged, skipped });
 });
 
 // ─── POST /api/links/:id/comments ────────────────────────────────────────────
-// Body: { text }  — appends a comment and returns the updated link.
-router.post('/:id/comments', (req, res) => {
+router.post('/:id/comments', async (req, res) => {
   const { text } = req.body;
   if (!text || !text.trim()) return res.status(400).json({ error: 'text is required' });
 
@@ -268,13 +280,13 @@ router.post('/:id/comments', (req, res) => {
   if (!link) return res.status(404).json({ error: 'not found' });
 
   if (!Array.isArray(link.comments)) link.comments = [];
-  link.comments.push({ id: Date.now().toString(), text: text.trim(), createdAt: new Date().toISOString() });
-  writeLinks(links);
+  link.comments.push({ id: crypto.randomUUID(), text: text.trim(), createdAt: new Date().toISOString() });
+  await writeLinks(links);
   res.json(link);
 });
 
-// ─── DELETE /api/links/:id/comments/:commentId ────────────────────────────────
-router.delete('/:id/comments/:commentId', (req, res) => {
+// ─── DELETE /api/links/:id/comments/:commentId ───────────────────────────────
+router.delete('/:id/comments/:commentId', async (req, res) => {
   const links = readLinks();
   const link  = links.find(l => l.id === req.params.id);
   if (!link) return res.status(404).json({ error: 'not found' });
@@ -282,12 +294,11 @@ router.delete('/:id/comments/:commentId', (req, res) => {
   const before = (link.comments || []).length;
   link.comments = (link.comments || []).filter(c => c.id !== req.params.commentId);
   if (link.comments.length === before) return res.status(404).json({ error: 'comment not found' });
-  writeLinks(links);
+  await writeLinks(links);
   res.status(204).end();
 });
 
 // ─── GET /api/links/:id ──────────────────────────────────────────────────────
-// Fetch a single link by ID — used by LinkModal to poll for status changes.
 router.get('/:id', (req, res) => {
   const links = readLinks();
   const link  = links.find(l => l.id === req.params.id);
@@ -296,20 +307,18 @@ router.get('/:id', (req, res) => {
 });
 
 // ─── DELETE /api/links/:id ────────────────────────────────────────────────────
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   let links  = readLinks();
   const link = links.find(l => l.id === req.params.id);
   if (!link) return res.status(404).json({ error: 'not found' });
 
-  // Clean up the index before removing the link
   if (link.projects && link.projects.length > 0) {
     const index = readIndex();
     updateIndex(index, link.id, link.projects, []);
-    writeIndex(index);
+    await writeIndex(index);
   }
-  writeLinks(links.filter(l => l.id !== req.params.id));
+  await writeLinks(links.filter(l => l.id !== req.params.id));
 
-  // Remove saved content and PDF files if they exist
   const p = require('path');
   const contentFile = p.join(CONTENT_DIR, `${link.id}.txt`);
   const pdfFile     = p.join(PDF_DIR,     `${link.id}.pdf`);

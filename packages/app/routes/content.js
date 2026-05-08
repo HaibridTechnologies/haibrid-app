@@ -20,7 +20,7 @@ const MAX_CHARS   = contentConfig.maxChars;
 //
 //   • no text — server must fetch the page itself; mark as pending
 //     and enqueue the link for background processing.
-router.post('/:id/content', (req, res) => {
+router.post('/:id/content', async (req, res) => {
   const links = readLinks();
   const link  = links.find(l => l.id === req.params.id);
   if (!link) return res.status(404).json({ error: 'not found' });
@@ -39,14 +39,14 @@ router.post('/:id/content', (req, res) => {
     link.contentParsedAt  = new Date().toISOString();
     link.contentTruncated = truncated;
     link.contentError     = null;
-    writeLinks(links);
+    await writeLinks(links);
     return res.json(link);
   }
 
   // No usable text — hand off to the content queue for a server-side fetch
   link.contentStatus = 'pending';
   link.contentError  = null;
-  writeLinks(links);
+  await writeLinks(links);
   contentQueue.enqueue(link.id);
   res.json(link);
 });
@@ -66,7 +66,7 @@ router.get('/:id/content', (req, res) => {
 
 // ─── DELETE /api/links/:id/content ───────────────────────────────────────────
 // Removes the saved text file and resets all content-related fields on the link.
-router.delete('/:id/content', (req, res) => {
+router.delete('/:id/content', async (req, res) => {
   const links = readLinks();
   const link  = links.find(l => l.id === req.params.id);
   if (!link) return res.status(404).json({ error: 'not found' });
@@ -78,7 +78,7 @@ router.delete('/:id/content', (req, res) => {
   link.contentParsedAt  = null;
   link.contentTruncated = false;
   link.contentError     = null;
-  writeLinks(links);
+  await writeLinks(links);
   res.status(204).end();
 });
 

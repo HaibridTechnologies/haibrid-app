@@ -33,7 +33,6 @@ app.use('/pdfs', express.static(path.join(__dirname, 'pdfs')));
 app.use('/api/links',        require('./routes/links'));
 app.use('/api/links',        require('./routes/content'));  // content sub-routes live under /api/links/:id/content
 app.use('/api/projects',     require('./routes/projects'));
-app.use('/api/tasks',        require('./routes/tasks'));
 app.use('/api/visits',       require('./routes/visits'));
 app.use('/api/chat',         require('./routes/chat'));
 app.use('/api/feedback',     require('./routes/feedback'));

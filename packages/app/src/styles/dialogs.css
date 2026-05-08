@@ -1,0 +1,124 @@
+/* ════════════════════════════════════════════════════════════════════
+   ERROR BOUNDARY
+══════════════════════════════════════════════════════════════════════ */
+.error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100vh;
+  padding: 40px;
+  text-align: center;
+}
+.error-boundary-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+.error-boundary-message {
+  font-size: 14px;
+  color: var(--text-2);
+  max-width: 480px;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   DIALOGS & MODALS
+══════════════════════════════════════════════════════════════════════ */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15,28,53,0.40);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.dialog {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  width: 100%;
+  max-width: 400px;
+  margin: 16px;
+  overflow: hidden;
+}
+
+/* Override for the link detail modal — needs an explicit height so the PDF
+   panel's flex:1 iframe has a definite size to fill. */
+.dialog.link-modal {
+  max-width: 860px;
+  width: calc(100vw - 48px);
+  height: 90vh;
+  margin: 0;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.dialog-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.2px;
+}
+
+.dialog-close {
+  background: none;
+  border: none;
+  color: var(--muted-light);
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s, background 0.15s;
+}
+.dialog-close:hover { color: var(--text-2); background: var(--surface-2); }
+
+.dialog-body {
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dialog-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 22px 18px;
+  border-top: 1px solid var(--border-light);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   COLOR SWATCHES
+══════════════════════════════════════════════════════════════════════ */
+.color-swatches { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s;
+  padding: 0;
+}
+.color-swatch:hover { transform: scale(1.18); }
+.color-swatch.selected { border-color: var(--text); transform: scale(1.18); }

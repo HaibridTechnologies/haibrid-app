@@ -1,0 +1,75 @@
+/* ════════════════════════════════════════════════════════════════════
+   PROJECT SELECTOR
+══════════════════════════════════════════════════════════════════════ */
+.project-selector { position: relative; flex-shrink: 0; }
+
+.project-selector-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: var(--radius);
+  padding: 6px 11px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+.project-selector-btn:hover { border-color: var(--accent); color: var(--text-2); }
+.project-selector-btn.has-selection { color: var(--text); }
+
+.project-selector-dots { display: flex; gap: 3px; align-items: center; }
+.selector-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+.selector-chevron { font-size: 10px; opacity: 0.55; }
+
+.project-selector-dropdown {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  min-width: 180px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 50;
+  padding: 4px;
+}
+
+.selector-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  transition: background 0.1s;
+}
+.selector-option:hover { background: var(--surface-2); }
+.selector-option.selected { background: var(--accent-light); }
+.selector-option.locked { opacity: 0.7; cursor: default; }
+.selector-option input[type="checkbox"] { flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
+.selector-option-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.selector-lock {
+  font-size: 10px;
+  color: var(--muted-light);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.selector-empty { font-size: 12px; color: var(--muted-light); text-align: center; padding: 10px; }
+
+/* ════════════════════════════════════════════════════════════════════
+   UNASSIGNED CARD
+══════════════════════════════════════════════════════════════════════ */
+.unassigned-card { border-style: dashed; opacity: 0.75; }
+.unassigned-card:hover { opacity: 1; }
