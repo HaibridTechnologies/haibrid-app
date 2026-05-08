@@ -33,7 +33,7 @@ Example output:
 
 exports.chat = {
   model:           'claude-haiku-4-5-20251001',  // used when web search is off
-  modelWithSearch: 'claude-sonnet-4-5-20251015', // Sonnet required for web_search tool
+  modelWithSearch: 'claude-sonnet-4-5-20250929', // Sonnet required for web_search tool
   max_tokens: 1024,
   system: `\
 You are a helpful reading assistant embedded in the Haibrid reading-list app.

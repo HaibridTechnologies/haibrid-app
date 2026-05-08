@@ -5,6 +5,7 @@ const fs       = require('fs');
 const path     = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
 const { chat: chatPrompt } = require('../lib/prompts');
+const { readLinks } = require('../lib/storage');
 const logger   = require('../lib/logger');
 
 const router = express.Router();
@@ -24,14 +25,22 @@ function client() {
  *
  * Scenarios:
  *   no content + no selection  → plain assistant
- *   content only               → page content included
+ *   link metadata only         → title, abstract, summary injected
+ *   content only               → full page text included
  *   selection only             → selected text as primary context
  *   content + selection        → both, with selection emphasised
+ *
+ * Link metadata (title, abstract, summary) is always injected when
+ * available so the model has structured knowledge even when the raw
+ * content file is empty or contains only boilerplate.
  */
-function buildSystem(pageContent, selectedText, pageUrl) {
+function buildSystem(pageContent, selectedText, pageUrl, link) {
   const base = chatPrompt.system;
+  const hasContent  = Boolean(pageContent);
+  const hasSelect   = Boolean(selectedText);
+  const hasMeta     = link && (link.title || link.abstract || link.summary);
 
-  if (!pageContent && !selectedText) {
+  if (!hasContent && !hasSelect && !hasMeta) {
     return base;
   }
 
@@ -41,15 +50,25 @@ function buildSystem(pageContent, selectedText, pageUrl) {
     parts.push(`The user is currently viewing: ${pageUrl}`, '');
   }
 
-  if (pageContent && !selectedText) {
+  // Structured metadata — always inject when present; gives the model
+  // title/abstract/summary even if raw page text is sparse.
+  if (hasMeta) {
+    parts.push('--- LINK METADATA ---');
+    if (link.title)    parts.push(`Title: ${link.title}`);
+    if (link.abstract) parts.push(`\nAbstract:\n${link.abstract}`);
+    if (link.summary)  parts.push(`\nAI Summary:\n${link.summary}`);
+    parts.push('--- END LINK METADATA ---', '');
+  }
+
+  if (hasContent && !hasSelect) {
     parts.push(
       '--- PAGE CONTENT ---',
       pageContent.slice(0, MAX_CONTENT_CHARS),
       '--- END PAGE CONTENT ---',
       '',
-      'Use the page content above to answer the user\'s questions accurately.',
+      'Use the link metadata and page content above to answer the user\'s questions accurately.',
     );
-  } else if (!pageContent && selectedText) {
+  } else if (!hasContent && hasSelect) {
     parts.push(
       '--- SELECTED TEXT ---',
       selectedText,
@@ -57,7 +76,7 @@ function buildSystem(pageContent, selectedText, pageUrl) {
       '',
       'The user has highlighted this excerpt from the page. Use it as your primary context.',
     );
-  } else if (pageContent && selectedText) {
+  } else if (hasContent && hasSelect) {
     parts.push(
       '--- FULL PAGE CONTENT ---',
       pageContent.slice(0, MAX_CONTENT_CHARS),
@@ -69,6 +88,8 @@ function buildSystem(pageContent, selectedText, pageUrl) {
       '',
       'The user has highlighted a specific passage from the page. Treat the selected excerpt as the most important context — reference it directly when relevant — while using the full page content for broader understanding.',
     );
+  } else if (hasMeta) {
+    parts.push('Use the link metadata above to answer the user\'s questions accurately.');
   }
 
   return parts.join('\n');
@@ -154,18 +175,27 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'message is required' });
   }
 
-  // Load saved page content if a linkId was provided
+  // Load saved page content and link metadata if a linkId was provided
   let pageContent = null;
+  let link        = null;
   if (linkId) {
+    // Raw text content
     const contentPath = path.join(CONTENT_DIR, `${linkId}.txt`);
     try {
       pageContent = fs.readFileSync(contentPath, 'utf8');
     } catch {
       logger.warn(`[chat] content file not found for linkId=${linkId}`);
     }
+    // Structured metadata (title, abstract, summary) from links.json
+    try {
+      const links = readLinks();
+      link = links.find(l => l.id === linkId) || null;
+    } catch {
+      logger.warn(`[chat] could not load link metadata for linkId=${linkId}`);
+    }
   }
 
-  const systemPrompt = buildSystem(pageContent, selectedText || null, pageUrl || null);
+  const systemPrompt = buildSystem(pageContent, selectedText || null, pageUrl || null, link);
 
   const messages = [
     ...history.map(({ role, content }) => ({ role, content })),
