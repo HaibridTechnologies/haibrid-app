@@ -2,6 +2,7 @@ import { useState } from 'react'
 import AppNav from './components/AppNav'
 import ReadingList from './components/links/ReadingList'
 import ProjectsPage from './components/projects/ProjectsPage'
+import ProjectView from './components/projects/ProjectView'
 import ContentPage from './components/content/ContentPage'
 import TrackingPage from './components/tracking/TrackingPage'
 
@@ -30,7 +31,7 @@ export default function App() {
         <ProjectsPage onOpenProject={handleOpenProject} />
       )}
       {activeTab === 'projects' && activeProject && (
-        <ReadingList project={activeProject} />
+        <ProjectView project={activeProject} />
       )}
       {activeTab === 'content' && <ContentPage />}
       {activeTab === 'tracking' && <TrackingPage />}

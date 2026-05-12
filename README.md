@@ -9,7 +9,7 @@ A research-focused reading list manager — save links from the browser extensio
 ### Web App
 
 **Reading List**
-- Save links by URL with optional notes and project tags
+- Save links via an expandable inline form — URL, notes, and project tags in one step
 - Filter by Unread / All / Read
 - Full-text search across URL, title, and notes
 - Mark links read or unread, with one-click undo
@@ -20,16 +20,30 @@ A research-focused reading list manager — save links from the browser extensio
 **Link Detail**
 - View full metadata: URL, notes, date added
 - Save page content — plain text is extracted, cleaned, and stored locally
+- Refresh saved content at any time with the ↻ Refresh button
 - AI summary generated automatically after content is saved
 - Inline PDF viewer for downloadable papers
 - Citation count pulled from Semantic Scholar (arXiv links)
 - User comments — add timestamped notes to any link, delete individually
+- arXiv papers: full-text extracted via PDF (LiteParse fallback if HTML parsing fails)
 
 **Projects**
 - Organise links into named, colour-coded projects
 - Each project shows a link count and its own filtered view
 - Unassigned folder collects read links with no project
 - Deleting a project removes its tag from all links — no orphaned data
+- Each project has a **Links** tab and a **Research** tab
+
+**Project Research (RAG Chat)**
+- Bulk-load page content for all links in a project with one click
+- Live progress bar showing parsed / pending / failed sources
+- Citation counts refreshed automatically for arXiv links on load
+- Chat with all loaded sources as context (multi-document RAG)
+- Responses streamed in real time with smart auto-scroll — stops scrolling if you move up to read, shows a "↓ Jump to latest" pill to return
+- Toggle between ⚡ streaming and ◼ full-response mode per conversation
+- Model selector: Sonnet 4.5 (default), Haiku 4.5, Sonnet 4.6, Opus 4.5
+- Contextual starter questions generated from your link titles automatically
+- **Generate questions** button — asks Claude to produce 5 specific questions grounded in the actual source abstracts
 
 **Import & Export**
 - Select individual links with checkboxes and export as a JSON file
@@ -224,9 +238,27 @@ haibrid-app/
 │   ├── app/
 │   │   ├── server.js         # Express server
 │   │   ├── contentQueue.js   # Background fetch / parse / summarise queue
-│   │   ├── lib/              # Shared server utilities
-│   │   ├── routes/           # API route handlers
-│   │   └── src/              # React frontend (Vite)
+│   │   ├── lib/
+│   │   │   ├── prompts.js    # AI model + system prompt definitions
+│   │   │   ├── summarize.js  # Anthropic API wrapper
+│   │   │   ├── parsePdf.js   # LiteParse PDF text extraction
+│   │   │   ├── siteHandlers.js # Site-specific parsers (arXiv, YouTube)
+│   │   │   ├── storage.js    # links.json / projects.json read/write
+│   │   │   └── ...           # http, htmlToText, semanticScholar, etc.
+│   │   ├── routes/
+│   │   │   ├── chat.js       # Streaming SSE chat endpoint + model list
+│   │   │   ├── projects.js   # Projects CRUD + content-status, load-content, suggest-questions
+│   │   │   ├── links.js      # Links CRUD
+│   │   │   └── ...
+│   │   └── src/
+│   │       ├── components/
+│   │       │   ├── projects/
+│   │       │   │   ├── ProjectView.jsx      # Links | Research tab switcher
+│   │       │   │   └── ProjectResearch.jsx  # RAG chat UI
+│   │       │   └── ...
+│   │       └── styles/
+│   │           ├── project-research.css
+│   │           └── ...
 │   ├── extension/
 │   │   ├── manifest.json     # Chrome extension manifest (MV3)
 │   │   ├── popup.html/js/css # Extension popup UI

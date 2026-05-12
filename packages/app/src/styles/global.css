@@ -10,6 +10,7 @@
 @import './tracking.css';
 @import './snackbar.css';
 @import './landing.css';
+@import './project-research.css';
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 

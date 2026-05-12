@@ -62,3 +62,50 @@
   gap: 8px;
   align-items: center;
 }
+
+/* ── Add link trigger button ─────────────────────────────────────────────── */
+.add-link-trigger {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 5px 12px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--accent-mid);
+  background: var(--accent-light);
+  color: var(--accent);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.add-link-trigger:hover  { background: var(--accent-mid); }
+.add-link-trigger.active { background: var(--surface-2); border-color: var(--border); color: var(--muted); }
+.add-link-trigger-icon   { font-size: 15px; line-height: 1; }
+
+/* ── Expandable add-link form ────────────────────────────────────────────── */
+.add-link-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 28px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  animation: slideDown 0.15s ease;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.add-link-url {
+  flex: 1;
+  min-width: 0;
+}
+.add-link-notes {
+  width: 180px;
+  flex-shrink: 0;
+}

@@ -133,15 +133,19 @@ export default function LinkModal({ link: initialLink, allProjects = [], onClose
     setFeedbackOpen(o => !o)
   }
 
-  // ── Save content ───────────────────────────────────────────────────────────
+  // ── Save / refresh content ─────────────────────────────────────────────────
   const handleSaveContent = async () => {
     setSaving(true)
+    setContent(null)       // clear stale cached text so pending spinner shows
+    setContentError(null)
     try { updateLink(await saveContent(link.id)) } catch {}
     setSaving(false)
   }
 
   const hasPdf   = Boolean(link.pdfFile)
-  const showTabs = link.contentStatus === 'parsed' && hasPdf
+  // Show tabs whenever a PDF exists — content tab may show failed/pending state
+  // but the PDF should always be accessible if it was previously downloaded.
+  const showTabs = hasPdf
   const dwell    = fmtDwell(link.totalDwellSeconds)
 
   // Projects that belong to this link
@@ -226,7 +230,9 @@ export default function LinkModal({ link: initialLink, allProjects = [], onClose
             </div>
 
             <div className="link-modal-meta-right">
-              {isArxiv && <CitationBadge link={link} onLinkUpdated={updateLink} />}
+              {(isArxiv || link.citationCount != null) && (
+                <CitationBadge link={link} onLinkUpdated={updateLink} />
+              )}
 
               {/* Read/Unread toggle */}
               <button
@@ -342,6 +348,17 @@ export default function LinkModal({ link: initialLink, allProjects = [], onClose
               {/* Parsed — abstract, summary, text */}
               {link.contentStatus === 'parsed' && (
                 <>
+                  <div className="link-modal-content-header">
+                    <span className="link-modal-section-label">Saved content</span>
+                    <button
+                      className="btn-ghost btn-sm link-modal-refresh-btn"
+                      onClick={handleSaveContent}
+                      disabled={saving}
+                      title="Re-fetch content from server"
+                    >
+                      {saving ? '…' : '↻ Refresh'}
+                    </button>
+                  </div>
                   {link.abstract && (
                     <div className="link-modal-abstract">
                       <div className="link-modal-section-label">Abstract</div>

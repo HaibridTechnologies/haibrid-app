@@ -5,7 +5,7 @@ const fs       = require('fs');
 const path     = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
 const { chat: chatPrompt } = require('../lib/prompts');
-const { readLinks } = require('../lib/storage');
+const { readLinks, readIndex } = require('../lib/storage');
 const logger   = require('../lib/logger');
 
 const router = express.Router();
@@ -13,10 +13,26 @@ const CONTENT_DIR = path.join(__dirname, '..', 'content');
 
 // Max chars of page content to include in context (~12k tokens in Haiku)
 const MAX_CONTENT_CHARS = 50_000;
+// Per-link char budget when building multi-doc project context
+const PER_LINK_CHARS = 8_000;
 
 let _client = null;
 function client() {
-  if (!_client) _client = new Anthropic();
+  if (!_client) {
+    const raw = new Anthropic();
+    // Wrap with LangSmith tracing when LANGSMITH_TRACING is set.
+    // Falls back to the plain client if the env var is absent or wrapSDK fails.
+    if (process.env.LANGSMITH_TRACING === 'true') {
+      try {
+        const { wrapSDK } = require('langsmith/wrappers');
+        _client = wrapSDK(raw);
+      } catch {
+        _client = raw;
+      }
+    } else {
+      _client = raw;
+    }
+  }
   return _client;
 }
 
@@ -96,11 +112,66 @@ function buildSystem(pageContent, selectedText, pageUrl, link) {
 }
 
 /**
- * Run a single chat turn without web search (Haiku).
+ * Build a multi-document context string from all parsed links in a project.
+ * Each source gets up to PER_LINK_CHARS of full text (or abstract/summary if
+ * the content file is missing) with a clear header so the model can cite sources.
+ *
+ * @param {string} projectId
+ * @returns {{ context: string, parsed: number, total: number }}
  */
-async function runPlainChat(systemPrompt, messages) {
+function buildProjectContext(projectId) {
+  const index = readIndex();
+  const ids   = index[projectId] || [];
+  const links = readLinks().filter(l => ids.includes(l.id));
+  const parsed = links.filter(l => l.contentStatus === 'parsed');
+
+  const parts = parsed.map((link, i) => {
+    const header = [
+      `--- SOURCE ${i + 1}: ${link.title || link.url} ---`,
+      `URL: ${link.url}`,
+      link.citationCount != null ? `Citations: ${link.citationCount}` : null,
+    ].filter(Boolean).join('\n');
+
+    // Try full content file first
+    let body = '';
+    const contentPath = path.join(CONTENT_DIR, `${link.id}.txt`);
+    try {
+      const raw = fs.readFileSync(contentPath, 'utf8');
+      body = raw.slice(0, PER_LINK_CHARS);
+      if (raw.length > PER_LINK_CHARS) body += '\n[…truncated]';
+    } catch {
+      // Fall back to stored abstract/summary
+      if (link.abstract) body += `Abstract: ${link.abstract}\n`;
+      if (link.summary)  body += `Summary: ${link.summary}`;
+    }
+
+    return `${header}\n\n${body.trim()}`;
+  });
+
+  return {
+    context: parts.join('\n\n'),
+    parsed:  parsed.length,
+    total:   links.length,
+  };
+}
+
+// Models available for selection in the research chat UI.
+// Exported so the client can fetch the list rather than hard-coding it.
+const AVAILABLE_MODELS = [
+  { id: 'claude-sonnet-4-5-20250929', label: 'Sonnet 4.5', note: 'Balanced · default',    default: true },
+  { id: 'claude-haiku-4-5-20251001',  label: 'Haiku 4.5',  note: 'Fast · low cost'                     },
+  { id: 'claude-sonnet-4-6',          label: 'Sonnet 4.6', note: 'Latest Sonnet'                        },
+  { id: 'claude-opus-4-5-20251101',   label: 'Opus 4.5',   note: 'Most capable · slowest'               },
+];
+
+/**
+ * Run a single chat turn without web search.
+ * @param {string} [modelOverride] - Optional model ID; falls back to prompts default.
+ */
+async function runPlainChat(systemPrompt, messages, modelOverride) {
+  const model = modelOverride || chatPrompt.model;
   const response = await client().messages.create({
-    model:      chatPrompt.model,
+    model,
     max_tokens: chatPrompt.max_tokens,
     system:     systemPrompt,
     messages,
@@ -155,38 +226,55 @@ async function runWebSearch(systemPrompt, messages) {
   return { text, usage };
 }
 
+/** GET /api/chat/models — list models available for the research chat UI */
+router.get('/models', (_req, res) => res.json(AVAILABLE_MODELS));
+
 /**
  * POST /api/chat
  *
  * Body:
  *   message      {string}   — the user's new message
  *   history      {Array}    — prior turns: [{ role, content }, ...]
- *   linkId       {string?}  — if set, page content is loaded from content/{linkId}.txt
+ *   linkId       {string?}  — single-link mode: loads content/{linkId}.txt
+ *   projectId    {string?}  — project mode: loads all parsed links in the project
+ *   model        {string?}  — model ID override (must be in AVAILABLE_MODELS)
  *   selectedText {string?}  — text the user highlighted on the page
  *   pageUrl      {string?}  — URL of the current tab (for display in system prompt)
  *   webSearch    {boolean}  — if true, Sonnet + web_search tool is used
  *
- * Response: { reply: string }
+ * Response: SSE stream of { text } chunks, terminated by { done, sourcesUsed?, sourcesTotal? }
+ *           or { error } on failure.
  */
 router.post('/', async (req, res) => {
-  const { message, history = [], linkId, selectedText, pageUrl, webSearch = false } = req.body;
+  const { message, history = [], linkId, projectId, model: modelReq, selectedText, pageUrl, webSearch = false } = req.body;
+
+  // Validate model override against the allowlist
+  const modelOverride = AVAILABLE_MODELS.find(m => m.id === modelReq)?.id || null;
 
   if (!message || typeof message !== 'string') {
     return res.status(400).json({ error: 'message is required' });
   }
 
-  // Load saved page content and link metadata if a linkId was provided
-  let pageContent = null;
-  let link        = null;
-  if (linkId) {
-    // Raw text content
+  let pageContent  = null;
+  let link         = null;
+  let sourcesUsed  = undefined;
+  let sourcesTotal = undefined;
+
+  if (projectId) {
+    // ── Project mode: concatenate content from all parsed links ───────────────
+    const { context, parsed, total } = buildProjectContext(projectId);
+    pageContent  = context || null;
+    sourcesUsed  = parsed;
+    sourcesTotal = total;
+    logger.info(`[chat] project mode | projectId=${projectId} | sources=${parsed}/${total}`);
+  } else if (linkId) {
+    // ── Single-link mode ──────────────────────────────────────────────────────
     const contentPath = path.join(CONTENT_DIR, `${linkId}.txt`);
     try {
       pageContent = fs.readFileSync(contentPath, 'utf8');
     } catch {
       logger.warn(`[chat] content file not found for linkId=${linkId}`);
     }
-    // Structured metadata (title, abstract, summary) from links.json
     try {
       const links = readLinks();
       link = links.find(l => l.id === linkId) || null;
@@ -204,18 +292,48 @@ router.post('/', async (req, res) => {
 
   logger.info(`[chat] request | linkId=${linkId || 'none'} | hasSelection=${Boolean(selectedText)} | webSearch=${webSearch} | historyLen=${history.length}`);
 
+  // ── SSE setup ──────────────────────────────────────────────────────────────
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
   try {
-    const { text: reply, usage } = webSearch
-      ? await runWebSearch(systemPrompt, messages)
-      : await runPlainChat(systemPrompt, messages);
+    if (webSearch) {
+      // Web search uses an agentic tool loop — run it to completion then send
+      // the full reply as a single text chunk followed by done.
+      const { text: reply, usage } = await runWebSearch(systemPrompt, messages);
+      logger.info(`[chat] reply | model=${chatPrompt.modelWithSearch} | in=${usage?.input_tokens} | out=${usage?.output_tokens}`);
+      send({ text: reply });
+      send({ done: true, sourcesUsed, sourcesTotal });
+    } else {
+      // Plain chat — stream text deltas as they arrive
+      const model = modelOverride || chatPrompt.model;
+      const stream = client().messages.stream({
+        model,
+        max_tokens: chatPrompt.max_tokens,
+        system:     systemPrompt,
+        messages,
+      });
 
-    logger.info(`[chat] reply | model=${webSearch ? 'sonnet+web' : 'haiku'} | in=${usage?.input_tokens} | out=${usage?.output_tokens}`);
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+          send({ text: event.delta.text });
+        }
+      }
 
-    res.json({ reply });
+      const final = await stream.finalMessage();
+      logger.info(`[chat] reply | model=${model} | in=${final.usage?.input_tokens} | out=${final.usage?.output_tokens}`);
+      send({ done: true, sourcesUsed, sourcesTotal });
+    }
   } catch (err) {
     logger.error(`[chat] Anthropic API error: ${err.message}`);
-    res.status(500).json({ error: 'Failed to generate reply' });
+    send({ error: 'Failed to generate reply' });
   }
+
+  res.end();
 });
 
 module.exports = router;

@@ -381,6 +381,18 @@
   margin-bottom: 6px;
 }
 
+/* Content header — section label + refresh button */
+.link-modal-content-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.link-modal-refresh-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
 /* Abstract */
 .link-modal-abstract { margin-bottom: 14px; }
 .link-modal-abstract-text {

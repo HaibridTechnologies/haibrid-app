@@ -1,6 +1,6 @@
 'use strict';
 
-const https         = require('https');
+const https                   = require('https');
 const { fetchHtml, fetchUrl } = require('./http');
 const htmlToText    = require('./htmlToText');
 
@@ -55,22 +55,35 @@ async function handleArxiv(url) {
   const id = match[1];
 
   // ── Always fetch Atom API for abstract (fast, ~10 KB) ─────────────────────
+  // Must use fetchUrl (not fetchHtml) because the Atom API returns
+  // application/atom+xml which fetchHtml's textOnly filter rejects.
   let abstract = null;
-  const xml = await fetchHtml(`https://export.arxiv.org/api/query?id_list=${id}`);
+  const xml = await fetchUrl(`https://export.arxiv.org/api/query?id_list=${id}`, {
+    timeoutMs: 10_000,
+    maxBytes:  100_000,
+  });
   if (xml) {
     const raw = xml.match(/<summary[^>]*>([\s\S]+?)<\/summary>/i)?.[1];
     if (raw) abstract = raw.replace(/\s+/g, ' ').trim();
   }
 
   // ── Try full HTML version first ────────────────────────────────────────────
+  // arXiv returns a "No HTML for '...'" error page (not a 404) when the HTML
+  // version doesn't exist (common for pre-2023 papers compiled from raw LaTeX).
+  // Detect and skip that page so we fall through to the Atom API abstract.
   const html = await fetchHtml(`https://arxiv.org/html/${id}`);
-  if (html) {
+  if (html && !html.includes('No HTML for')) {
     const raw  = htmlToText(html);
     const text = cleanArxivText(raw);
-    if (text && text.length > 200) return { text, abstract };
+    if (text && text.length > 200) return { text, abstract, minimal: false };
   }
 
   // ── Fall back to Atom API text (title + abstract only) ────────────────────
+  // This is the path for older papers (pre-2023) that have no HTML version.
+  // We return the abstract as the full content so the summariser has real
+  // paper information to work with rather than an empty or error response.
+  // `minimal: true` signals to contentQueue that it should try LiteParse on
+  // the downloaded PDF if one is available, to get the full paper text.
   if (!xml) throw new Error('Failed to fetch arXiv metadata');
 
   // The API title entry repeats the query at the top — grab the second <title>
@@ -82,14 +95,22 @@ async function handleArxiv(url) {
 
   if (!abstract) throw new Error('arXiv API returned no abstract for this paper');
 
+  // Published date
+  const published = xml.match(/<published>([^<]+)<\/published>/i)?.[1]?.slice(0, 10) ?? null;
+
   const text = [
-    title   ? `Title: ${title}`     : null,
-    authors ? `Authors: ${authors}` : null,
+    title     ? `Title: ${title}`         : null,
+    authors   ? `Authors: ${authors}`     : null,
+    published ? `Published: ${published}` : null,
     '',
+    'Abstract:',
     abstract,
+    '',
+    `Source: https://arxiv.org/abs/${id}`,
+    '(Full paper text unavailable — HTML version not yet generated for this paper)',
   ].filter(l => l !== null).join('\n');
 
-  return { text, abstract };
+  return { text, abstract, minimal: true };
 }
 
 /**
