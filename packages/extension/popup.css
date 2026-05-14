@@ -553,6 +553,21 @@ button:disabled { opacity: 0.55; cursor: default; box-shadow: none; }
 .banner-dl-btn:hover { background: var(--accent-mid); box-shadow: none; }
 .banner-dl-btn:disabled { opacity: 0.55; cursor: default; }
 
+.chat-clear-btn {
+  flex-shrink: 0;
+  margin-right: auto;
+  background: none;
+  color: var(--muted-light);
+  border: none;
+  padding: 2px 0;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  width: auto;
+  transition: color 0.15s;
+}
+.chat-clear-btn:hover { color: var(--danger); box-shadow: none; }
+
 /* Web search toggle row */
 .banner-web-row {
   border-top: 1px solid var(--border-light);

@@ -43,6 +43,15 @@ app.get('/api/config', (req, res) => {
   res.json({ visits });
 });
 
+// Extension debug log — writes timestamped lines to ext-debug.log
+const EXT_LOG = path.join(__dirname, 'logs', 'ext-debug.log');
+app.post('/api/ext-log', (req, res) => {
+  const { level = 'info', msg = '' } = req.body || {};
+  const line = `[${new Date().toISOString()}] [${level}] ${msg}\n`;
+  fs.appendFileSync(EXT_LOG, line);
+  res.end();
+});
+
 // Queue status endpoint
 app.get('/api/content/queue', (req, res) => {
   res.json({ queue: contentQueue.getQueue(), processing: contentQueue.isProcessing() });

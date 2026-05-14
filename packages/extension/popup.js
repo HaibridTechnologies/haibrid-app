@@ -3,6 +3,8 @@ import {
   normaliseUrl, randomColor, escHtml, escRegex, truncate,
 } from './popup/utils.js';
 import { renderMarkdown } from './popup/markdown.js';
+import { loadChat, saveChat, clearChat } from './popup/chatStorage.js';
+import * as logger from './popup/logger.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   // ── Element refs ─────────────────────────────────────────────
@@ -723,6 +725,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const webRow = document.createElement('div');
     webRow.className = 'banner-row banner-web-row';
 
+    // Clear chat button — shown on the left when history exists
+    if (chatHistory.length > 0) {
+      const clearBtn = document.createElement('button');
+      clearBtn.className = 'chat-clear-btn';
+      clearBtn.textContent = 'Clear chat';
+      clearBtn.addEventListener('click', async () => {
+        await clearChat(chatPageUrl);
+        chatHistory = [];
+        chatMessages.innerHTML = '';
+        renderChatBanner();
+      });
+      webRow.appendChild(clearBtn);
+    }
+
     const webToggle = document.createElement('button');
     webToggle.className = `web-toggle${chatWebSearch ? ' active' : ''}`;
     webToggle.title = chatWebSearch
@@ -823,9 +839,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /** Called when the Chat tab becomes active. */
   async function initChatTab() {
+    logger.log('[chat] initChatTab start');
     chatPageUrl = null;
     chatLinkId  = null;
     chatSelectedText = null;
+    chatHistory = [];
+    chatMessages.innerHTML = '';
 
     // 1. Check for a pending context-menu selection
     const session = await chrome.storage.session.get('pendingChat');
@@ -833,20 +852,36 @@ document.addEventListener('DOMContentLoaded', () => {
       chatSelectedText = session.pendingChat.selectedText || null;
       chatPageUrl      = session.pendingChat.url || null;
       await chrome.storage.session.remove('pendingChat');
+      logger.log('[chat] pendingChat found, url:', chatPageUrl);
     }
 
     // 2. Determine the current tab's URL (may differ from pendingChat.url)
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.url) chatPageUrl = tab.url;
+    logger.log('[chat] chatPageUrl:', chatPageUrl);
 
     // 3. If the page is already saved with parsed content, wire up linkId
     if (existingLink?.contentStatus === 'parsed') {
       chatLinkId = existingLink.id;
+      logger.log('[chat] chatLinkId:', chatLinkId);
+    }
+
+    // 4. Restore saved history for this URL
+    if (chatPageUrl) {
+      logger.log('[chat] loading history from storage…');
+      const saved = await loadChat(chatPageUrl);
+      logger.log('[chat] loadChat result:', saved);
+      if (saved?.messages?.length) {
+        chatHistory = saved.messages;
+        if (!chatLinkId && saved.linkId) chatLinkId = saved.linkId;
+        chatHistory.forEach(msg => appendMessage(msg.role, msg.content));
+        logger.log('[chat] restored', chatHistory.length, 'messages');
+      } else {
+        logger.log('[chat] no saved history for this URL');
+      }
     }
 
     renderChatBanner();
-
-    // Focus the input
     chatInput.focus();
   }
 
@@ -914,6 +949,7 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedText: chatSelectedText  || undefined,
         webSearch:    chatWebSearch     || undefined,
       };
+      logger.log('[chat] sending message, chatPageUrl:', chatPageUrl, 'historyLen:', chatHistory.length);
 
       const res = await fetch(API_CHAT, {
         method:  'POST',
@@ -921,14 +957,40 @@ document.addEventListener('DOMContentLoaded', () => {
         body:    JSON.stringify(body),
       });
 
+      logger.log('[chat] response status:', res.status, 'content-type:', res.headers.get('content-type'));
       if (!res.ok) throw new Error(`Server error ${res.status}`);
-      const { reply } = await res.json();
+
+      // Server sends SSE — accumulate text chunks until { done: true }
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let reply = '';
+
+      outer: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop(); // keep incomplete last line
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = JSON.parse(line.slice(6));
+          if (data.error) throw new Error(data.error);
+          if (data.text)  reply += data.text;
+          if (data.done)  { logger.log('[chat] SSE done, reply length:', reply.length); break outer; }
+        }
+      }
 
       chatHistory.push({ role: 'user',      content: text  });
       chatHistory.push({ role: 'assistant', content: reply });
 
+      logger.log('[chat] saving to storage, url:', chatPageUrl, 'messages:', chatHistory.length);
+      await saveChat(chatPageUrl, chatHistory, chatLinkId);
+      logger.log('[chat] save complete');
       appendMessage('assistant', reply);
+      renderChatBanner();
     } catch (err) {
+      logger.error('[chat] error:', err.message, err.stack);
       appendSystemMessage(err instanceof TypeError ? 'Server not reachable.' : 'Could not get a reply.');
     } finally {
       setLoading(false);
