@@ -3,14 +3,9 @@
  * All routes are nested under `/api/links/:id/content`.
  */
 
-const BASE = '/api/links';
+import { request } from './request'
 
-async function request(url, options = {}) {
-  const res = await fetch(url, options)
-  if (!res.ok) throw new Error(`${options.method || 'GET'} ${url} → ${res.status}`)
-  if (res.status === 204) return null
-  return res.json()
-}
+const BASE = '/api/links';
 
 /** Fetch all links that have a content record (any status other than null/none). */
 export const getContentLinks = () =>

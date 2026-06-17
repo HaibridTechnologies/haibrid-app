@@ -1,9 +1,4 @@
-async function request(url, options = {}) {
-  const res = await fetch(url, options)
-  if (!res.ok) throw new Error(`${options.method || 'GET'} ${url} → ${res.status}`)
-  if (res.status === 204) return null
-  return res.json()
-}
+import { request } from './request'
 
 /** Fetch visit history. days defaults to 30. */
 export const getVisits = ({ days = 30, domain, q } = {}) => {

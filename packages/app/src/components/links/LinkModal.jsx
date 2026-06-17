@@ -2,17 +2,10 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { getLink, updateLinkTitle, updateLinkNotes, toggleLink } from '../../api/linksApi'
 import { getContent, saveContent } from '../../api/contentApi'
 import { getFeedback } from '../../api/visitsApi'
-import { fmtDate } from '../../utils/date'
+import { fmtDate, fmtDwellCompact } from '../../utils/date'
+import { cleanContentText } from '../../utils/content'
 import CitationBadge from './CitationBadge'
 import CommentsSection from './CommentsSection'
-
-/** Format total dwell seconds into a compact human-readable string. */
-function fmtDwell(seconds) {
-  if (!seconds || seconds < 60) return null
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  return h > 0 ? `${h}h ${m}m` : `${m}m`
-}
 
 /**
  * Detail modal for a single link.
@@ -59,13 +52,7 @@ export default function LinkModal({ link: initialLink, allProjects = [], onClose
     setContentLoading(true)
     getContent(link.id)
       .then(r => {
-        const cleaned = r.text
-          .split('\n')
-          .map(l => l.trimStart())
-          .join('\n')
-          .replace(/\n{3,}/g, '\n\n')
-          .trim()
-        setContent(cleaned)
+        setContent(cleanContentText(r.text))
         setContentLoading(false)
       })
       .catch(() => { setContentError('Could not load content.'); setContentLoading(false) })
@@ -149,7 +136,7 @@ export default function LinkModal({ link: initialLink, allProjects = [], onClose
   // Show tabs whenever a PDF exists — content tab may show failed/pending state
   // but the PDF should always be accessible if it was previously downloaded.
   const showTabs = hasPdf
-  const dwell    = fmtDwell(link.totalDwellSeconds)
+  const dwell    = fmtDwellCompact(link.totalDwellSeconds)
 
   // Projects that belong to this link
   const linkProjects = allProjects.filter(p => (link.projects || []).includes(p.id))
