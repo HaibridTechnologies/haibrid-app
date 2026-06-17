@@ -7,8 +7,8 @@ const router  = express.Router();
 const { fetchTitle } = require('../lib/http');
 const { CONTENT_DIR, PDF_DIR } = require('../contentQueue');
 const {
-  readLinks, writeLinks,
-  readIndex, writeIndex, updateIndex,
+  readLinks, writeLinks, modifyLinks,
+  readIndex, writeIndex, modifyIndex, updateIndex,
   findLink,
 } = require('../lib/storage');
 const { extractArxivId, fetchCitationCount } = require('../lib/semanticScholar');
@@ -85,23 +85,24 @@ router.post('/', wrap(async (req, res) => {
   const url           = normaliseUrl(rawUrl);
   const resolvedTitle = title || (await fetchTitle(url)) || url;
 
-  const links = readLinks();
-  const link  = {
-    id:        crypto.randomUUID(),
-    url,
-    title:     resolvedTitle,
-    notes:     notes || '',
-    read:      false,
-    projects:  Array.isArray(projects) ? projects : [],
-    createdAt: new Date().toISOString(),
-  };
-  links.unshift(link);
-  await writeLinks(links);
+  const link = await modifyLinks(links => {
+    const l = {
+      id:        crypto.randomUUID(),
+      url,
+      title:     resolvedTitle,
+      notes:     notes || '',
+      read:      false,
+      projects:  Array.isArray(projects) ? projects : [],
+      createdAt: new Date().toISOString(),
+    };
+    links.unshift(l);
+    return l;
+  });
 
   if (link.projects.length > 0) {
-    const index = readIndex();
-    updateIndex(index, link.id, [], link.projects);
-    await writeIndex(index);
+    await modifyIndex(index => {
+      updateIndex(index, link.id, [], link.projects);
+    });
   }
 
   // Fire-and-forget citation count lookup for arXiv links
@@ -109,12 +110,12 @@ router.post('/', wrap(async (req, res) => {
   if (arxivId) {
     fetchCitationCount(arxivId).then(async count => {
       if (count === null) return;
-      const all  = readLinks();
-      const saved = all.find(l => l.id === link.id);
-      if (!saved) return;
-      saved.citationCount   = count;
-      saved.citationCountAt = new Date().toISOString();
-      await writeLinks(all);
+      await modifyLinks(links => {
+        const saved = links.find(l => l.id === link.id);
+        if (!saved) return;
+        saved.citationCount   = count;
+        saved.citationCountAt = new Date().toISOString();
+      });
     }).catch(() => {});
   }
 
@@ -124,21 +125,27 @@ router.post('/', wrap(async (req, res) => {
 // ─── PATCH /api/links/:id ─────────────────────────────────────────────────────
 // Update mutable fields: title and/or notes.
 router.patch('/:id', findLink, wrap(async (req, res) => {
-  const { links, link } = req;
-
   const { title, notes } = req.body;
-  if (title !== undefined) link.title = title.trim() || link.title;
-  if (notes !== undefined) link.notes = notes;
-  await writeLinks(links);
+  const link = await modifyLinks(links => {
+    const l = links.find(l => l.id === req.params.id);
+    if (!l) return null;
+    if (title !== undefined) l.title = title.trim() || l.title;
+    if (notes !== undefined) l.notes = notes;
+    return l;
+  });
+  if (!link) return res.status(404).json({ error: 'not found' });
   res.json(link);
 }));
 
 // ─── PATCH /api/links/:id/toggle ─────────────────────────────────────────────
 router.patch('/:id/toggle', findLink, wrap(async (req, res) => {
-  const { links, link } = req;
-
-  link.read = !link.read;
-  await writeLinks(links);
+  const link = await modifyLinks(links => {
+    const l = links.find(l => l.id === req.params.id);
+    if (!l) return null;
+    l.read = !l.read;
+    return l;
+  });
+  if (!link) return res.status(404).json({ error: 'not found' });
   res.json(link);
 }));
 
@@ -147,29 +154,37 @@ router.patch('/:id/projects', findLink, wrap(async (req, res) => {
   const { projects } = req.body;
   if (!Array.isArray(projects)) return res.status(400).json({ error: 'projects must be an array' });
 
-  const { links, link } = req;
+  const result = await modifyLinks(links => {
+    const l = links.find(l => l.id === req.params.id);
+    if (!l) return null;
+    const oldProjects = l.projects || [];
+    l.projects = projects;
+    return { link: l, oldProjects };
+  });
+  if (!result) return res.status(404).json({ error: 'not found' });
 
-  const index = readIndex();
-  updateIndex(index, link.id, link.projects || [], projects);
-  link.projects = projects;
-  await writeLinks(links);
-  await writeIndex(index);
-  res.json(link);
+  await modifyIndex(index => {
+    updateIndex(index, result.link.id, result.oldProjects, projects);
+  });
+  res.json(result.link);
 }));
 
 // ─── POST /api/links/:id/citations/refresh ───────────────────────────────────
 router.post('/:id/citations/refresh', findLink, wrap(async (req, res) => {
-  const { links, link } = req;
-
-  const arxivId = extractArxivId(link.url);
+  const arxivId = extractArxivId(req.link.url);
   if (!arxivId) return res.status(400).json({ error: 'not an arXiv link' });
 
   const count = await fetchCitationCount(arxivId).catch(() => null);
   if (count === null) return res.status(502).json({ error: 'could not reach Semantic Scholar' });
 
-  link.citationCount   = count;
-  link.citationCountAt = new Date().toISOString();
-  await writeLinks(links);
+  const link = await modifyLinks(links => {
+    const l = links.find(l => l.id === req.params.id);
+    if (!l) return null;
+    l.citationCount   = count;
+    l.citationCountAt = new Date().toISOString();
+    return l;
+  });
+  if (!link) return res.status(404).json({ error: 'not found' });
   res.json(link);
 }));
 
@@ -184,14 +199,14 @@ router.post('/dwell', wrap(async (req, res) => {
     return res.status(400).json({ error: 'url and positive dwellSeconds are required' });
   }
 
-  const url   = normaliseUrl(rawUrl);
-  const links = readLinks();
-  const link  = links.find(l => l.url === url);
-  if (!link) return res.json({ ok: false }); // URL not saved — silent no-op
-
-  link.totalDwellSeconds = (link.totalDwellSeconds || 0) + Math.round(dwellSeconds);
-  await writeLinks(links);
-  res.json({ ok: true, totalDwellSeconds: link.totalDwellSeconds });
+  const url = normaliseUrl(rawUrl);
+  const result = await modifyLinks(links => {
+    const link = links.find(l => l.url === url);
+    if (!link) return null;
+    link.totalDwellSeconds = (link.totalDwellSeconds || 0) + Math.round(dwellSeconds);
+    return { ok: true, totalDwellSeconds: link.totalDwellSeconds };
+  });
+  res.json(result || { ok: false });
 }));
 
 // ─── GET /api/links/export ───────────────────────────────────────────────────
@@ -214,51 +229,57 @@ router.post('/import', wrap(async (req, res) => {
   const incoming = req.body?.links;
   if (!Array.isArray(incoming)) return res.status(400).json({ error: 'links array required' });
 
-  const existing    = readLinks();
-  const urlToLink   = new Map(existing.map(l => [l.url, l]));
-  const seenInBatch = new Set();
-  const index       = readIndex();
-
   let added = 0, tagged = 0, skipped = 0;
-  const toAdd = [];
-  let dirty = false;
+  const indexOps = [];  // { linkId, oldProjects, newProjects }
 
-  for (const link of incoming) {
-    if (!link.url) { skipped++; continue; }
-    const url         = normaliseUrl(link.url);
-    const newProjects = Array.isArray(link.projects) ? link.projects : [];
+  await modifyLinks(links => {
+    const urlToLink   = new Map(links.map(l => [l.url, l]));
+    const seenInBatch = new Set();
+    const toAdd = [];
 
-    if (urlToLink.has(url)) {
-      if (newProjects.length === 0) { skipped++; continue; }
-      const saved  = urlToLink.get(url);
-      const before = saved.projects || [];
-      const merged = [...new Set([...before, ...newProjects])];
-      if (merged.length === before.length) { skipped++; continue; }
-      updateIndex(index, saved.id, before, merged);
-      saved.projects = merged;
-      tagged++;
-      dirty = true;
-    } else if (!seenInBatch.has(url)) {
-      seenInBatch.add(url);
-      toAdd.push({
-        id:        crypto.randomUUID(),
-        url,
-        title:     link.title || url,
-        notes:     link.notes || '',
-        read:      !!link.read,
-        projects:  newProjects,
-        createdAt: link.createdAt || new Date().toISOString(),
-        ...(link.citationCount != null ? { citationCount: link.citationCount, citationCountAt: link.citationCountAt } : {}),
-      });
-      added++;
-    } else {
-      skipped++;
+    for (const item of incoming) {
+      if (!item.url) { skipped++; continue; }
+      const url         = normaliseUrl(item.url);
+      const newProjects = Array.isArray(item.projects) ? item.projects : [];
+
+      if (urlToLink.has(url)) {
+        if (newProjects.length === 0) { skipped++; continue; }
+        const saved  = urlToLink.get(url);
+        const before = saved.projects || [];
+        const merged = [...new Set([...before, ...newProjects])];
+        if (merged.length === before.length) { skipped++; continue; }
+        indexOps.push({ linkId: saved.id, oldProjects: before, newProjects: merged });
+        saved.projects = merged;
+        tagged++;
+      } else if (!seenInBatch.has(url)) {
+        seenInBatch.add(url);
+        const newLink = {
+          id:        crypto.randomUUID(),
+          url,
+          title:     item.title || url,
+          notes:     item.notes || '',
+          read:      !!item.read,
+          projects:  newProjects,
+          createdAt: item.createdAt || new Date().toISOString(),
+          ...(item.citationCount != null ? { citationCount: item.citationCount, citationCountAt: item.citationCountAt } : {}),
+        };
+        toAdd.push(newLink);
+        if (newProjects.length > 0) indexOps.push({ linkId: newLink.id, oldProjects: [], newProjects });
+        added++;
+      } else {
+        skipped++;
+      }
     }
-  }
 
-  if (toAdd.length > 0 || dirty) {
-    await writeLinks([...toAdd.reverse(), ...existing]);
-    await writeIndex(index);
+    if (toAdd.length > 0) links.unshift(...toAdd.reverse());
+  });
+
+  if (indexOps.length > 0) {
+    await modifyIndex(index => {
+      for (const { linkId, oldProjects, newProjects } of indexOps) {
+        updateIndex(index, linkId, oldProjects, newProjects);
+      }
+    });
   }
 
   res.json({ added, tagged, skipped });
@@ -269,22 +290,29 @@ router.post('/:id/comments', findLink, wrap(async (req, res) => {
   const { text } = req.body;
   if (!text || !text.trim()) return res.status(400).json({ error: 'text is required' });
 
-  const { links, link } = req;
-
-  if (!Array.isArray(link.comments)) link.comments = [];
-  link.comments.push({ id: crypto.randomUUID(), text: text.trim(), createdAt: new Date().toISOString() });
-  await writeLinks(links);
+  const link = await modifyLinks(links => {
+    const l = links.find(l => l.id === req.params.id);
+    if (!l) return null;
+    if (!Array.isArray(l.comments)) l.comments = [];
+    l.comments.push({ id: crypto.randomUUID(), text: text.trim(), createdAt: new Date().toISOString() });
+    return l;
+  });
+  if (!link) return res.status(404).json({ error: 'not found' });
   res.json(link);
 }));
 
 // ─── DELETE /api/links/:id/comments/:commentId ───────────────────────────────
 router.delete('/:id/comments/:commentId', findLink, wrap(async (req, res) => {
-  const { links, link } = req;
-
-  const before = (link.comments || []).length;
-  link.comments = (link.comments || []).filter(c => c.id !== req.params.commentId);
-  if (link.comments.length === before) return res.status(404).json({ error: 'comment not found' });
-  await writeLinks(links);
+  const found = await modifyLinks(links => {
+    const link = links.find(l => l.id === req.params.id);
+    if (!link) return 'link-missing';
+    const before = (link.comments || []).length;
+    link.comments = (link.comments || []).filter(c => c.id !== req.params.commentId);
+    if (link.comments.length === before) return 'comment-missing';
+    return 'ok';
+  });
+  if (found === 'link-missing') return res.status(404).json({ error: 'not found' });
+  if (found === 'comment-missing') return res.status(404).json({ error: 'comment not found' });
   res.status(204).end();
 }));
 
@@ -295,18 +323,22 @@ router.get('/:id', findLink, (req, res) => {
 
 // ─── DELETE /api/links/:id ────────────────────────────────────────────────────
 router.delete('/:id', findLink, wrap(async (req, res) => {
-  const { links, link } = req;
+  const removed = await modifyLinks(links => {
+    const idx = links.findIndex(l => l.id === req.params.id);
+    if (idx === -1) return null;
+    return links.splice(idx, 1)[0];
+  });
+  if (!removed) return res.status(404).json({ error: 'not found' });
 
-  if (link.projects && link.projects.length > 0) {
-    const index = readIndex();
-    updateIndex(index, link.id, link.projects, []);
-    await writeIndex(index);
+  if (removed.projects && removed.projects.length > 0) {
+    await modifyIndex(index => {
+      updateIndex(index, removed.id, removed.projects, []);
+    });
   }
-  await writeLinks(links.filter(l => l.id !== req.params.id));
 
   const p = require('path');
-  const contentFile = p.join(CONTENT_DIR, `${link.id}.txt`);
-  const pdfFile     = p.join(PDF_DIR,     `${link.id}.pdf`);
+  const contentFile = p.join(CONTENT_DIR, `${removed.id}.txt`);
+  const pdfFile     = p.join(PDF_DIR,     `${removed.id}.pdf`);
   if (fs.existsSync(contentFile)) fs.unlinkSync(contentFile);
   if (fs.existsSync(pdfFile))     fs.unlinkSync(pdfFile);
 

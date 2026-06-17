@@ -4,8 +4,8 @@ const path    = require('path');
 const express = require('express');
 const router  = express.Router();
 
-const contentQueue                        = require('../contentQueue');
-const { readLinks, writeLinks, findLink } = require('../lib/storage');
+const contentQueue                                    = require('../contentQueue');
+const { readLinks, writeLinks, modifyLinks, findLink } = require('../lib/storage');
 const wrap = require('../lib/asyncHandler');
 
 // Share the content directory path with the queue so files land in one place
@@ -22,31 +22,38 @@ const MAX_CHARS   = contentConfig.maxChars;
 //   • no text — server must fetch the page itself; mark as pending
 //     and enqueue the link for background processing.
 router.post('/:id/content', findLink, wrap(async (req, res) => {
-  const { links, link } = req;
-
   const { text } = req.body;
+  const linkId = req.params.id;
 
   if (text && text.trim().length >= 20) {
-    // Extension-supplied text: write directly and skip the fetch queue
     const truncated = text.length > MAX_CHARS;
     fs.writeFileSync(
-      path.join(CONTENT_DIR, `${link.id}.txt`),
+      path.join(CONTENT_DIR, `${linkId}.txt`),
       truncated ? text.slice(0, MAX_CHARS) : text.trim(),
       'utf8'
     );
-    link.contentStatus    = 'parsed';
-    link.contentParsedAt  = new Date().toISOString();
-    link.contentTruncated = truncated;
-    link.contentError     = null;
-    await writeLinks(links);
+    const link = await modifyLinks(links => {
+      const l = links.find(l => l.id === linkId);
+      if (!l) return null;
+      l.contentStatus    = 'parsed';
+      l.contentParsedAt  = new Date().toISOString();
+      l.contentTruncated = truncated;
+      l.contentError     = null;
+      return l;
+    });
+    if (!link) return res.status(404).json({ error: 'not found' });
     return res.json(link);
   }
 
-  // No usable text — hand off to the content queue for a server-side fetch
-  link.contentStatus = 'pending';
-  link.contentError  = null;
-  await writeLinks(links);
-  contentQueue.enqueue(link.id);
+  const link = await modifyLinks(links => {
+    const l = links.find(l => l.id === linkId);
+    if (!l) return null;
+    l.contentStatus = 'pending';
+    l.contentError  = null;
+    return l;
+  });
+  if (!link) return res.status(404).json({ error: 'not found' });
+  contentQueue.enqueue(linkId);
   res.json(link);
 }));
 
@@ -64,16 +71,18 @@ router.get('/:id/content', findLink, (req, res) => {
 // ─── DELETE /api/links/:id/content ───────────────────────────────────────────
 // Removes the saved text file and resets all content-related fields on the link.
 router.delete('/:id/content', findLink, wrap(async (req, res) => {
-  const { links, link } = req;
-
-  const filePath = path.join(CONTENT_DIR, `${link.id}.txt`);
+  const linkId = req.params.id;
+  const filePath = path.join(CONTENT_DIR, `${linkId}.txt`);
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
-  link.contentStatus    = null;
-  link.contentParsedAt  = null;
-  link.contentTruncated = false;
-  link.contentError     = null;
-  await writeLinks(links);
+  await modifyLinks(links => {
+    const l = links.find(l => l.id === linkId);
+    if (!l) return;
+    l.contentStatus    = null;
+    l.contentParsedAt  = null;
+    l.contentTruncated = false;
+    l.contentError     = null;
+  });
   res.status(204).end();
 }));
 

@@ -44,10 +44,35 @@ function writeJson(filePath, data) {
   });
 }
 
+/**
+ * Atomically read → modify → write a JSON data file.
+ * The entire cycle runs under the file's mutex, preventing TOCTOU races
+ * where two concurrent requests read the same state and one overwrites
+ * the other's changes.
+ *
+ * `fn(data)` receives the current file contents (array or object).
+ * Mutate `data` in-place; the mutated value is written back automatically.
+ * The return value of `fn` is passed through to the caller.
+ *
+ * @param {string}   filePath
+ * @param {*}        fallback  - default value when the file does not exist
+ * @param {Function} fn        - async (data) => result
+ * @returns {Promise<*>} whatever `fn` returned
+ */
+async function modifyJson(filePath, fallback, fn) {
+  return getMutex(filePath).runExclusive(async () => {
+    const data = readJson(filePath, fallback);
+    const result = await fn(data);
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    return result;
+  });
+}
+
 // ─── Domain readers / writers ─────────────────────────────────────────────────
 
 const readLinks    = ()  => readJson(FILES.links,    []);
 const writeLinks   = (v) => writeJson(FILES.links,    v);
+const modifyLinks  = (fn) => modifyJson(FILES.links,  [], fn);
 
 const readTasks    = ()  => readJson(FILES.tasks,    []);
 const writeTasks   = (v) => writeJson(FILES.tasks,    v);
@@ -56,27 +81,33 @@ const writeTasks   = (v) => writeJson(FILES.tasks,    v);
 // It allows O(1) lookup of links by project instead of scanning every link.
 const readIndex    = ()  => readJson(FILES.index,    {});
 const writeIndex   = (v) => writeJson(FILES.index,    v);
+const modifyIndex  = (fn) => modifyJson(FILES.index,  {}, fn);
 
-const readProjects = ()  => readJson(FILES.projects, []);
+const readProjects  = ()  => readJson(FILES.projects, []);
 const writeProjects = (v) => writeJson(FILES.projects, v);
+const modifyProjects = (fn) => modifyJson(FILES.projects, [], fn);
 
 // Visits — rolling log of tracked page visits from the extension
 const readVisits    = ()  => readJson(FILES.visits,       []);
 const writeVisits   = (v) => writeJson(FILES.visits,       v);
+const modifyVisits  = (fn) => modifyJson(FILES.visits,  [], fn);
 
 // Pending visits — awaiting LLM evaluation
 const readVisitsPending  = ()  => readJson(FILES.visitsPending, []);
 const writeVisitsPending = (v) => writeJson(FILES.visitsPending, v);
+const modifyVisitsPending = (fn) => modifyJson(FILES.visitsPending, [], fn);
 
 // Visit filters — block/allow lists, min dwell time, and LLM evaluation prompt
 const { visits: visitsConfig } = require('./config');
-const readVisitFilters  = ()  => readJson(FILES.visitFilters, {
+const DEFAULT_VISIT_FILTERS = {
   blockList: ['instagram.com', 'facebook.com'],
   allowList: ['arxiv.org'],
   minDwellSeconds: visitsConfig.minDwellSeconds,
   evaluationPrompt: '',
-});
+};
+const readVisitFilters  = ()  => readJson(FILES.visitFilters, DEFAULT_VISIT_FILTERS);
 const writeVisitFilters = (v) => writeJson(FILES.visitFilters, v);
+const modifyVisitFilters = (fn) => modifyJson(FILES.visitFilters, DEFAULT_VISIT_FILTERS, fn);
 
 /**
  * Sync the inverted project→links index when a link's project membership changes.
@@ -110,6 +141,7 @@ function updateIndex(index, linkId, oldProjects, newProjects) {
 // Feedback — map of { [url]: [{ id, comment, decision, reason, createdAt }] }
 const readFeedback  = ()  => readJson(FILES.feedback, {});
 const writeFeedback = (v) => writeJson(FILES.feedback, v);
+const modifyFeedback = (fn) => modifyJson(FILES.feedback, {}, fn);
 
 /**
  * Express middleware: load all links, find the one matching `:id`,
@@ -125,13 +157,13 @@ function findLink(req, res, next) {
 }
 
 module.exports = {
-  readLinks,    writeLinks,
+  readLinks,    writeLinks,    modifyLinks,
   readTasks,    writeTasks,
-  readIndex,    writeIndex,    updateIndex,
-  readProjects, writeProjects,
-  readVisits,        writeVisits,
-  readVisitsPending, writeVisitsPending,
-  readVisitFilters,  writeVisitFilters,
-  readFeedback,      writeFeedback,
+  readIndex,    writeIndex,    modifyIndex,    updateIndex,
+  readProjects, writeProjects, modifyProjects,
+  readVisits,        writeVisits,        modifyVisits,
+  readVisitsPending, writeVisitsPending,  modifyVisitsPending,
+  readVisitFilters,  writeVisitFilters,   modifyVisitFilters,
+  readFeedback,      writeFeedback,       modifyFeedback,
   findLink,
 };
