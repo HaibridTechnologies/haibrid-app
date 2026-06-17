@@ -7,13 +7,6 @@ import { request } from './request'
 
 const BASE = '/api/links';
 
-async function request(url, options = {}) {
-  const res = await fetch(url, options)
-  if (!res.ok) throw new Error(`${options.method || 'GET'} ${url} → ${res.status}`)
-  if (res.status === 204) return null
-  return res.json()
-}
-
 /** Fetch all links that have a content record (any status other than null/none). */
 export const getContentLinks = () =>
   request(`${BASE}?hasContent=true`);
