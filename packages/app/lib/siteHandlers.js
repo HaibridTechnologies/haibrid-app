@@ -340,4 +340,4 @@ function parseTranscriptXml(xml) {
   return segments.join(' ').replace(/\s{2,}/g, ' ').trim();
 }
 
-module.exports = { getHandler };
+module.exports = { getHandler, cleanArxivText };

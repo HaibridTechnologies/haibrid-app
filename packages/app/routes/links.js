@@ -330,3 +330,4 @@ router.delete('/:id', wrap(async (req, res) => {
 }));
 
 module.exports = router;
+module.exports.normaliseUrl = normaliseUrl;

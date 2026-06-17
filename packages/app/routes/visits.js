@@ -247,3 +247,5 @@ router.put('/filters', wrap(async (req, res) => {
 }));
 
 module.exports = router;
+module.exports.pruneOldVisits = pruneOldVisits;
+module.exports.deduplicateVisits = deduplicateVisits;
