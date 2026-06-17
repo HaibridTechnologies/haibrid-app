@@ -1,14 +1,8 @@
 /**
  * Thin wrapper around the Express `/api/links` routes.
- * Throws on any non-OK HTTP response so callers can `.catch()` errors uniformly.
  */
 
-async function request(url, options = {}) {
-  const res = await fetch(url, options)
-  if (!res.ok) throw new Error(`${options.method || 'GET'} ${url} → ${res.status}`)
-  if (res.status === 204) return null
-  return res.json()
-}
+import { request } from './request'
 
 /**
  * Fetch links, optionally filtered and/or searched.

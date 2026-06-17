@@ -7,15 +7,9 @@ import {
 } from '../../api/visitsApi'
 import { addLink } from '../../api/linksApi'
 import { getProjects } from '../../api/projectsApi'
-import { fmtDwell } from '../../utils/date'
+import { fmtDwell, fmtDateTime } from '../../utils/date'
 
 const DEFAULT_FILTERS = { blockList: [], allowList: [], minDwellSeconds: 30, evaluationPrompt: '' }
-
-function fmtDate(iso) {
-  const d = new Date(iso)
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
-    ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-}
 
 function DomainListEditor({ label, hint, entries, onChange }) {
   const [input, setInput] = useState('')
@@ -376,7 +370,7 @@ export default function TrackingPage() {
                 </div>
                 <div className="visit-meta">
                   <span className="visit-dwell">{fmtDwell(v.dwellSeconds)}</span>
-                  <span className="meta-date">{fmtDate(v.queuedAt)}</span>
+                  <span className="meta-date">{fmtDateTime(v.queuedAt)}</span>
                 </div>
               </div>
             ))
@@ -432,7 +426,7 @@ export default function TrackingPage() {
                 </div>
                 <div className="visit-meta">
                   <span className="visit-dwell">{fmtDwell(v.dwellSeconds)}</span>
-                  <span className="meta-date">{fmtDate(v.visitedAt)}</span>
+                  <span className="meta-date">{fmtDateTime(v.visitedAt)}</span>
 
                   {/* Save to reading list */}
                   {savedVisits.has(v.id) ? (

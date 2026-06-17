@@ -9,6 +9,7 @@ const { CONTENT_DIR, PDF_DIR } = require('../contentQueue');
 const {
   readLinks, writeLinks,
   readIndex, writeIndex, updateIndex,
+  findLink,
 } = require('../lib/storage');
 const { extractArxivId, fetchCitationCount } = require('../lib/semanticScholar');
 const wrap = require('../lib/asyncHandler');
@@ -122,10 +123,8 @@ router.post('/', wrap(async (req, res) => {
 
 // ─── PATCH /api/links/:id ─────────────────────────────────────────────────────
 // Update mutable fields: title and/or notes.
-router.patch('/:id', wrap(async (req, res) => {
-  const links = readLinks();
-  const link  = links.find(l => l.id === req.params.id);
-  if (!link) return res.status(404).json({ error: 'not found' });
+router.patch('/:id', findLink, wrap(async (req, res) => {
+  const { links, link } = req;
 
   const { title, notes } = req.body;
   if (title !== undefined) link.title = title.trim() || link.title;
@@ -135,10 +134,8 @@ router.patch('/:id', wrap(async (req, res) => {
 }));
 
 // ─── PATCH /api/links/:id/toggle ─────────────────────────────────────────────
-router.patch('/:id/toggle', wrap(async (req, res) => {
-  const links = readLinks();
-  const link  = links.find(l => l.id === req.params.id);
-  if (!link) return res.status(404).json({ error: 'not found' });
+router.patch('/:id/toggle', findLink, wrap(async (req, res) => {
+  const { links, link } = req;
 
   link.read = !link.read;
   await writeLinks(links);
@@ -146,13 +143,11 @@ router.patch('/:id/toggle', wrap(async (req, res) => {
 }));
 
 // ─── PATCH /api/links/:id/projects ───────────────────────────────────────────
-router.patch('/:id/projects', wrap(async (req, res) => {
+router.patch('/:id/projects', findLink, wrap(async (req, res) => {
   const { projects } = req.body;
   if (!Array.isArray(projects)) return res.status(400).json({ error: 'projects must be an array' });
 
-  const links = readLinks();
-  const link  = links.find(l => l.id === req.params.id);
-  if (!link) return res.status(404).json({ error: 'not found' });
+  const { links, link } = req;
 
   const index = readIndex();
   updateIndex(index, link.id, link.projects || [], projects);
@@ -163,10 +158,8 @@ router.patch('/:id/projects', wrap(async (req, res) => {
 }));
 
 // ─── POST /api/links/:id/citations/refresh ───────────────────────────────────
-router.post('/:id/citations/refresh', wrap(async (req, res) => {
-  const links = readLinks();
-  const link  = links.find(l => l.id === req.params.id);
-  if (!link) return res.status(404).json({ error: 'not found' });
+router.post('/:id/citations/refresh', findLink, wrap(async (req, res) => {
+  const { links, link } = req;
 
   const arxivId = extractArxivId(link.url);
   if (!arxivId) return res.status(400).json({ error: 'not an arXiv link' });
@@ -272,13 +265,11 @@ router.post('/import', wrap(async (req, res) => {
 }));
 
 // ─── POST /api/links/:id/comments ────────────────────────────────────────────
-router.post('/:id/comments', wrap(async (req, res) => {
+router.post('/:id/comments', findLink, wrap(async (req, res) => {
   const { text } = req.body;
   if (!text || !text.trim()) return res.status(400).json({ error: 'text is required' });
 
-  const links = readLinks();
-  const link  = links.find(l => l.id === req.params.id);
-  if (!link) return res.status(404).json({ error: 'not found' });
+  const { links, link } = req;
 
   if (!Array.isArray(link.comments)) link.comments = [];
   link.comments.push({ id: crypto.randomUUID(), text: text.trim(), createdAt: new Date().toISOString() });
@@ -287,10 +278,8 @@ router.post('/:id/comments', wrap(async (req, res) => {
 }));
 
 // ─── DELETE /api/links/:id/comments/:commentId ───────────────────────────────
-router.delete('/:id/comments/:commentId', wrap(async (req, res) => {
-  const links = readLinks();
-  const link  = links.find(l => l.id === req.params.id);
-  if (!link) return res.status(404).json({ error: 'not found' });
+router.delete('/:id/comments/:commentId', findLink, wrap(async (req, res) => {
+  const { links, link } = req;
 
   const before = (link.comments || []).length;
   link.comments = (link.comments || []).filter(c => c.id !== req.params.commentId);
@@ -300,18 +289,13 @@ router.delete('/:id/comments/:commentId', wrap(async (req, res) => {
 }));
 
 // ─── GET /api/links/:id ──────────────────────────────────────────────────────
-router.get('/:id', (req, res) => {
-  const links = readLinks();
-  const link  = links.find(l => l.id === req.params.id);
-  if (!link) return res.status(404).json({ error: 'not found' });
-  res.json(link);
+router.get('/:id', findLink, (req, res) => {
+  res.json(req.link);
 });
 
 // ─── DELETE /api/links/:id ────────────────────────────────────────────────────
-router.delete('/:id', wrap(async (req, res) => {
-  let links  = readLinks();
-  const link = links.find(l => l.id === req.params.id);
-  if (!link) return res.status(404).json({ error: 'not found' });
+router.delete('/:id', findLink, wrap(async (req, res) => {
+  const { links, link } = req;
 
   if (link.projects && link.projects.length > 0) {
     const index = readIndex();

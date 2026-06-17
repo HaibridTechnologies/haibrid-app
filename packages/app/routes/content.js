@@ -4,8 +4,8 @@ const path    = require('path');
 const express = require('express');
 const router  = express.Router();
 
-const contentQueue              = require('../contentQueue');
-const { readLinks, writeLinks } = require('../lib/storage');
+const contentQueue                        = require('../contentQueue');
+const { readLinks, writeLinks, findLink } = require('../lib/storage');
 const wrap = require('../lib/asyncHandler');
 
 // Share the content directory path with the queue so files land in one place
@@ -21,10 +21,8 @@ const MAX_CHARS   = contentConfig.maxChars;
 //
 //   • no text — server must fetch the page itself; mark as pending
 //     and enqueue the link for background processing.
-router.post('/:id/content', wrap(async (req, res) => {
-  const links = readLinks();
-  const link  = links.find(l => l.id === req.params.id);
-  if (!link) return res.status(404).json({ error: 'not found' });
+router.post('/:id/content', findLink, wrap(async (req, res) => {
+  const { links, link } = req;
 
   const { text } = req.body;
 
@@ -54,10 +52,8 @@ router.post('/:id/content', wrap(async (req, res) => {
 
 // ─── GET /api/links/:id/content ───────────────────────────────────────────────
 // Reads the saved plain-text file and returns it alongside the truncation flag.
-router.get('/:id/content', (req, res) => {
-  const links = readLinks();
-  const link  = links.find(l => l.id === req.params.id);
-  if (!link) return res.status(404).json({ error: 'not found' });
+router.get('/:id/content', findLink, (req, res) => {
+  const { link } = req;
 
   const filePath = path.join(CONTENT_DIR, `${link.id}.txt`);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'content not found' });
@@ -67,10 +63,8 @@ router.get('/:id/content', (req, res) => {
 
 // ─── DELETE /api/links/:id/content ───────────────────────────────────────────
 // Removes the saved text file and resets all content-related fields on the link.
-router.delete('/:id/content', wrap(async (req, res) => {
-  const links = readLinks();
-  const link  = links.find(l => l.id === req.params.id);
-  if (!link) return res.status(404).json({ error: 'not found' });
+router.delete('/:id/content', findLink, wrap(async (req, res) => {
+  const { links, link } = req;
 
   const filePath = path.join(CONTENT_DIR, `${link.id}.txt`);
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);

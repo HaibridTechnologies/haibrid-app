@@ -111,6 +111,19 @@ function updateIndex(index, linkId, oldProjects, newProjects) {
 const readFeedback  = ()  => readJson(FILES.feedback, {});
 const writeFeedback = (v) => writeJson(FILES.feedback, v);
 
+/**
+ * Express middleware: load all links, find the one matching `:id`,
+ * and attach both `req.links` and `req.link`.  Returns 404 if not found.
+ */
+function findLink(req, res, next) {
+  const links = readLinks();
+  const link  = links.find(l => l.id === req.params.id);
+  if (!link) return res.status(404).json({ error: 'not found' });
+  req.links = links;
+  req.link  = link;
+  next();
+}
+
 module.exports = {
   readLinks,    writeLinks,
   readTasks,    writeTasks,
@@ -120,4 +133,5 @@ module.exports = {
   readVisitsPending, writeVisitsPending,
   readVisitFilters,  writeVisitFilters,
   readFeedback,      writeFeedback,
+  findLink,
 };

@@ -29,8 +29,37 @@ export function fmtDate(iso) {
   })
 }
 
+/**
+ * Format an ISO datetime string including the time.
+ * Example: "2026-04-08T14:30:00.000Z" → "8 Apr, 14:30"
+ *
+ * @param {string|null} iso
+ * @returns {string}
+ */
+export function fmtDateTime(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
+    ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+}
+
 export function fmtDwell(seconds) {
   if (seconds < 60)   return `${seconds}s`
   if (seconds < 3600) return `${Math.round(seconds / 60)}m`
   return `${(seconds / 3600).toFixed(1)}h`
+}
+
+/**
+ * Format dwell seconds for link items — returns null when the value is
+ * too short (< 60 s) to be meaningful so callers can hide the badge.
+ *
+ * @param {number|null|undefined} seconds
+ * @returns {string|null}
+ */
+export function fmtDwellCompact(seconds) {
+  if (!seconds || seconds < 60) return null
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
 }

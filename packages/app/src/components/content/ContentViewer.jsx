@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getContent } from '../../api/contentApi'
+import { cleanContentText } from '../../utils/content'
 
 /**
  * Modal overlay that displays the plain-text content saved for a link.
@@ -22,13 +23,7 @@ export default function ContentViewer({ link, onClose }) {
   useEffect(() => {
     getContent(link.id)
       .then(r => {
-        const cleaned = r.text
-          .split('\n')
-          .map(l => l.trimStart())
-          .join('\n')
-          .replace(/\n{3,}/g, '\n\n')
-          .trim()
-        setText(cleaned)
+        setText(cleanContentText(r.text))
       })
       .catch(() => setError('Could not load content.'))
   }, [link.id])

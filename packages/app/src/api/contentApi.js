@@ -3,6 +3,8 @@
  * All routes are nested under `/api/links/:id/content`.
  */
 
+import { request } from './request'
+
 const BASE = '/api/links';
 
 async function request(url, options = {}) {
