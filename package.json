@@ -9,6 +9,7 @@
     "build": "npm run build --workspace=packages/app",
     "start": "npm run start --workspace=packages/app",
     "icons": "npm run icons --workspace=packages/extension",
+    "test":     "npm run test --workspace=packages/app",
     "notebook": "cd packages/research && .venv/bin/jupyter lab notebooks/ --notebook-dir=notebooks"
   }
 }
