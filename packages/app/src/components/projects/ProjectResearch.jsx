@@ -57,7 +57,8 @@ export default function ProjectResearch({ project }) {
       s.push(`Summarise the most important insights from this ${topic} collection`)
 
       setSuggestions(s.slice(0, 5))
-    } catch {
+    } catch (err) {
+      console.error('[ProjectResearch] static suggestions failed:', err)
       setSuggestions([
         `What are the main themes across ${project.name} sources?`,
         'Summarise the key findings',
@@ -77,7 +78,9 @@ export default function ProjectResearch({ project }) {
       })
       const { suggestions: ai } = await res.json()
       if (ai?.length) setSuggestions(ai)
-    } catch {}
+    } catch (err) {
+      console.error('[ProjectResearch] AI suggestion generation failed:', err)
+    }
     setGenLoading(false)
   }
 
@@ -86,7 +89,9 @@ export default function ProjectResearch({ project }) {
     try {
       const res = await fetch(`/api/projects/${project.id}/content-status`)
       if (res.ok) setStatus(await res.json())
-    } catch {}
+    } catch (err) {
+      console.error('[ProjectResearch] content status fetch failed:', err)
+    }
   }, [project.id])
 
   useEffect(() => {
@@ -95,7 +100,7 @@ export default function ProjectResearch({ project }) {
     fetch('/api/chat/models')
       .then(r => r.json())
       .then(list => { setModels(list); setModel(list.find(m => m.default)?.id || list[0]?.id || '') })
-      .catch(() => {})
+      .catch((err) => console.error('[ProjectResearch] model fetch failed:', err))
   }, [fetchStatus])
 
   // Generate static suggestions once sources are available
@@ -136,7 +141,9 @@ export default function ProjectResearch({ project }) {
     try {
       await fetch(`/api/projects/${project.id}/load-content`, { method: 'POST' })
       await fetchStatus()
-    } catch {}
+    } catch (err) {
+      console.error('[ProjectResearch] load content failed:', err)
+    }
     setLoading(false)
   }
 

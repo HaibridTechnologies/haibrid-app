@@ -10,6 +10,7 @@ const {
   readIndex, writeIndex,
   readProjects, writeProjects,
 } = require('../lib/storage');
+const wrap = require('../lib/asyncHandler');
 
 // ─── GET /api/projects ────────────────────────────────────────────────────────
 router.get('/', (req, res) => {
@@ -19,7 +20,7 @@ router.get('/', (req, res) => {
 });
 
 // ─── POST /api/projects ───────────────────────────────────────────────────────
-router.post('/', async (req, res) => {
+router.post('/', wrap(async (req, res) => {
   const { name, description, color } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
 
@@ -34,10 +35,10 @@ router.post('/', async (req, res) => {
   projects.unshift(project);
   await writeProjects(projects);
   res.status(201).json({ ...project, linkCount: 0 });
-});
+}));
 
 // ─── PATCH /api/projects/:id ──────────────────────────────────────────────────
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', wrap(async (req, res) => {
   const projects = readProjects();
   const project  = projects.find(p => p.id === req.params.id);
   if (!project) return res.status(404).json({ error: 'not found' });
@@ -50,11 +51,11 @@ router.patch('/:id', async (req, res) => {
 
   const index = readIndex();
   res.json({ ...project, linkCount: (index[project.id] || []).length });
-});
+}));
 
 // ─── DELETE /api/projects/:id ─────────────────────────────────────────────────
 // Cascade: removes the project from the index and from every link's projects array.
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', wrap(async (req, res) => {
   let projects = readProjects();
   const before = projects.length;
   projects = projects.filter(p => p.id !== req.params.id);
@@ -76,12 +77,12 @@ router.delete('/:id', async (req, res) => {
   if (changed) await writeLinks(links);
 
   res.status(204).end();
-});
+}));
 
 // ─── POST /api/projects/:id/suggest-questions ────────────────────────────────
 // Asks the model to generate 5 specific questions based on the project's
 // loaded source abstracts/summaries. Used by the Research tab "Generate" button.
-router.post('/:id/suggest-questions', async (req, res) => {
+router.post('/:id/suggest-questions', wrap(async (req, res) => {
   const Anthropic = require('@anthropic-ai/sdk');
   const { chat: chatPrompt } = require('../lib/prompts');
 
@@ -132,7 +133,7 @@ Example: ["Question 1?", "Question 2?", "Question 3?", "Question 4?", "Question 
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
+}));
 
 // ─── GET /api/projects/:id/content-status ────────────────────────────────────
 // Returns a breakdown of content loading progress for all links in a project.
@@ -152,7 +153,7 @@ router.get('/:id/content-status', (req, res) => {
 // ─── POST /api/projects/:id/load-content ─────────────────────────────────────
 // Enqueues content fetching for all unloaded links in the project, and
 // kicks off citation refresh (fire-and-forget) for any arXiv links.
-router.post('/:id/load-content', async (req, res) => {
+router.post('/:id/load-content', wrap(async (req, res) => {
   const index = readIndex();
   const ids   = index[req.params.id] || [];
   const links = readLinks().filter(l => ids.includes(l.id));
@@ -195,6 +196,6 @@ router.post('/:id/load-content', async (req, res) => {
     enqueued: unloaded.length,
     arxiv:    arxiv.length,
   });
-});
+}));
 
 module.exports = router;

@@ -67,7 +67,7 @@ export default function ReadingList({ project = null }) {
 
   // Fetch project list once so the tag editor can show names/colours
   useEffect(() => {
-    getProjects().then(setAllProjects).catch(() => {})
+    getProjects().then(setAllProjects).catch((err) => console.error('[ReadingList] load projects failed:', err))
   }, [])
 
 

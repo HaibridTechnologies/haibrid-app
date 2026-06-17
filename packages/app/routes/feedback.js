@@ -3,6 +3,7 @@
 const express = require('express');
 const router  = express.Router();
 const { readFeedback, writeFeedback } = require('../lib/storage');
+const wrap = require('../lib/asyncHandler');
 
 /**
  * GET /api/feedback?url=<url>
@@ -23,7 +24,7 @@ router.get('/', (req, res) => {
  * Only entries with a non-empty comment are persisted.
  * Returns the full updated feedback map for all affected URLs.
  */
-router.post('/', (req, res) => {
+router.post('/', wrap(async (req, res) => {
   const items = req.body;
   if (!Array.isArray(items)) return res.status(400).json({ error: 'body must be an array' });
 
@@ -42,8 +43,8 @@ router.post('/', (req, res) => {
     });
   }
 
-  writeFeedback(all);
+  await writeFeedback(all);
   res.status(201).json({ ok: true });
-});
+}));
 
 module.exports = router;

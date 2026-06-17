@@ -102,7 +102,7 @@ export default function LinkModal({ link: initialLink, allProjects = [], onClose
     const trimmed = titleDraft.trim()
     setEditingTitle(false)
     if (!trimmed || trimmed === link.title) return
-    try { updateLink(await updateLinkTitle(link.id, trimmed)) } catch {}
+    try { updateLink(await updateLinkTitle(link.id, trimmed)) } catch (err) { console.error('[LinkModal] title update failed:', err) }
   }
   const cancelTitle = () => { setEditingTitle(false); setTitleDraft(link.title) }
 
@@ -115,20 +115,20 @@ export default function LinkModal({ link: initialLink, allProjects = [], onClose
   const commitNotes = async () => {
     setEditingNotes(false)
     if (notesDraft === (link.notes || '')) return
-    try { updateLink(await updateLinkNotes(link.id, notesDraft)) } catch {}
+    try { updateLink(await updateLinkNotes(link.id, notesDraft)) } catch (err) { console.error('[LinkModal] notes update failed:', err) }
   }
   const cancelNotes = () => { setEditingNotes(false); setNotesDraft(link.notes || '') }
 
   // ── Read toggle ────────────────────────────────────────────────────────────
   const handleToggleRead = async () => {
-    try { updateLink(await toggleLink(link.id)) } catch {}
+    try { updateLink(await toggleLink(link.id)) } catch (err) { console.error('[LinkModal] toggle failed:', err) }
   }
 
   // ── Feedback ───────────────────────────────────────────────────────────────
   const toggleFeedback = async () => {
     if (!feedbackOpen && feedback === null) {
       try { setFeedback(await getFeedback(link.url)) }
-      catch { setFeedback([]) }
+      catch (err) { console.error('[LinkModal] feedback load failed:', err); setFeedback([]) }
     }
     setFeedbackOpen(o => !o)
   }
@@ -138,7 +138,10 @@ export default function LinkModal({ link: initialLink, allProjects = [], onClose
     setSaving(true)
     setContent(null)       // clear stale cached text so pending spinner shows
     setContentError(null)
-    try { updateLink(await saveContent(link.id)) } catch {}
+    try { updateLink(await saveContent(link.id)) } catch (err) {
+      console.error('[LinkModal] content save failed:', err)
+      setContentError('Could not save content.')
+    }
     setSaving(false)
   }
 

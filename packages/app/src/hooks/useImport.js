@@ -24,8 +24,12 @@ export function useImport({ project, showSnackbar, reload }) {
       if (skipped && !added && !tagged) parts.push(`${skipped} already up to date`)
       showSnackbar({ message: `Import complete — ${parts.join(', ') || 'nothing changed'}` })
       reload()
-    } catch {
-      showSnackbar({ message: 'Import failed — invalid file' })
+    } catch (err) {
+      console.error('[useImport] import failed:', err)
+      const msg = err instanceof SyntaxError
+        ? 'Import failed — invalid JSON file'
+        : `Import failed — ${err.message || 'unknown error'}`
+      showSnackbar({ message: msg })
     }
   }
 

@@ -4,6 +4,7 @@ const express = require('express');
 const fs      = require('fs');
 const path    = require('path');
 const contentQueue = require('./contentQueue');
+const logger       = require('./lib/logger');
 
 const app  = express();
 const PORT = 3000;
@@ -44,11 +45,17 @@ app.get('/api/config', (req, res) => {
 });
 
 // Extension debug log — writes timestamped lines to ext-debug.log
-const EXT_LOG = path.join(__dirname, 'logs', 'ext-debug.log');
+const EXT_LOG_DIR = path.join(__dirname, 'logs');
+const EXT_LOG     = path.join(EXT_LOG_DIR, 'ext-debug.log');
 app.post('/api/ext-log', (req, res) => {
   const { level = 'info', msg = '' } = req.body || {};
   const line = `[${new Date().toISOString()}] [${level}] ${msg}\n`;
-  fs.appendFileSync(EXT_LOG, line);
+  try {
+    if (!fs.existsSync(EXT_LOG_DIR)) fs.mkdirSync(EXT_LOG_DIR, { recursive: true });
+    fs.appendFileSync(EXT_LOG, line);
+  } catch (err) {
+    logger.warn(`[ext-log] Failed to write log: ${err.message}`);
+  }
   res.end();
 });
 
@@ -58,9 +65,11 @@ app.get('/api/content/queue', (req, res) => {
 });
 
 // On-demand reconciliation: checks all links for missing content files and re-queues as needed
-app.post('/api/content/reconcile', (req, res) => {
-  const result = contentQueue.reconcile();
-  res.json(result);
+app.post('/api/content/reconcile', async (req, res, next) => {
+  try {
+    const result = await contentQueue.reconcile();
+    res.json(result);
+  } catch (err) { next(err); }
 });
 
 // ─── Production fallback ──────────────────────────────────────────────────────
@@ -68,12 +77,21 @@ if (fs.existsSync(DIST)) {
   app.get('*', (req, res) => res.sendFile(path.join(DIST, 'index.html')));
 }
 
+// ─── Global error handler ─────────────────────────────────────────────────────
+// Must be registered after all routes. Catches errors forwarded by asyncHandler
+// and any synchronous throws inside route handlers.
+app.use((err, _req, res, _next) => {
+  logger.error(err);
+  const status = err.status || 500;
+  res.status(status).json({ error: err.message || 'Internal server error' });
+});
+
 // ─── Start ───────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   const mode = fs.existsSync(DIST) ? 'production' : 'development';
   console.log(`App running in ${mode} mode at http://localhost:${PORT}`);
   if (mode === 'development') console.log('Frontend dev server: http://localhost:5173');
   // Audit links on startup and every hour thereafter
-  contentQueue.reconcile();
-  setInterval(contentQueue.reconcile, 60 * 60 * 1000);
+  contentQueue.reconcile().catch(err => logger.error('[reconcile] startup audit failed:', err.message));
+  setInterval(() => contentQueue.reconcile().catch(err => logger.error('[reconcile] periodic audit failed:', err.message)), 60 * 60 * 1000);
 });

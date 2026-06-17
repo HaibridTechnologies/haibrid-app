@@ -17,7 +17,7 @@ export default function CitationBadge({ link, onLinkUpdated }) {
     if (link.citationCount != null) return
     refreshCitations(link.id)
       .then(updated => onLinkUpdated?.(updated))
-      .catch(() => {})
+      .catch((err) => console.error('[CitationBadge] auto-fetch failed:', err))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRefresh = async () => {
@@ -25,7 +25,9 @@ export default function CitationBadge({ link, onLinkUpdated }) {
     try {
       const updated = await refreshCitations(link.id)
       onLinkUpdated?.(updated)
-    } catch {}
+    } catch (err) {
+      console.error('[CitationBadge] refresh failed:', err)
+    }
     setRefreshing(false)
   }
 

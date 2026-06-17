@@ -210,7 +210,9 @@ async function processLink(linkId) {
             'utf8'
           );
           let summary = null;
-          try { summary = await summarize(truncated ? pdfText.slice(0, MAX_CHARS) : pdfText) } catch {}
+          try { summary = await summarize(truncated ? pdfText.slice(0, MAX_CHARS) : pdfText) } catch (summaryErr) {
+            console.warn(`[contentQueue] rescue summary failed for ${linkId}:`, summaryErr.message);
+          }
           await setLinkContent(linkId, {
             contentStatus:    'parsed',
             contentParsedAt:  new Date().toISOString(),
@@ -285,7 +287,7 @@ function isProcessing() { return processing; }
  *
  * @returns {{ requeued: string[], total: number }}
  */
-function reconcile() {
+async function reconcile() {
   const links    = readLinks();
   const requeued = [];
 
@@ -313,7 +315,7 @@ function reconcile() {
   }
 
   // Persist any status resets in one write
-  if (requeued.length > 0) writeLinks(links);
+  if (requeued.length > 0) await writeLinks(links);
 
   console.log(`[reconcile] checked ${links.length} links, re-queued ${requeued.length}`);
   return { requeued, total: links.length };

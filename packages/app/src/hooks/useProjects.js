@@ -16,6 +16,8 @@ export function useProjects() {
     try {
       const data = await getProjects()
       setProjects(data)
+    } catch (err) {
+      console.error('[useProjects] load failed:', err)
     } finally {
       setLoading(false)
     }

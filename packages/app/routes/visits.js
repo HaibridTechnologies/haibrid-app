@@ -9,6 +9,7 @@ const {
 } = require('../lib/storage');
 const { evaluateVisits } = require('../lib/evaluateVisits');
 const { readLinks, writeLinks } = require('../lib/storage');
+const wrap = require('../lib/asyncHandler');
 const { visits: visitsConfig } = require('../lib/config');
 
 const MAX_AGE_DAYS = visitsConfig.maxAgeDays;
@@ -71,7 +72,7 @@ router.get('/', (req, res) => {
 // ─── POST /api/visits ─────────────────────────────────────────────────────────
 // Called by the extension background worker when a meaningful visit completes.
 // Body: { url, title, domain, dwellSeconds, visitedAt }
-router.post('/', async (req, res) => {
+router.post('/', wrap(async (req, res) => {
   const { url, title, domain, dwellSeconds, visitedAt } = req.body;
   if (!url) return res.status(400).json({ error: 'url is required' });
 
@@ -87,21 +88,21 @@ router.post('/', async (req, res) => {
 
   await writeVisits(visits);
   res.status(201).json({ ok: true });
-});
+}));
 
 // ─── DELETE /api/visits/:id ───────────────────────────────────────────────────
 // Delete a single visit by id.
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', wrap(async (req, res) => {
   const visits = readVisits().filter(v => v.id !== req.params.id);
   await writeVisits(visits);
   res.status(204).end();
-});
+}));
 
 // ─── DELETE /api/visits ───────────────────────────────────────────────────────
-router.delete('/', async (req, res) => {
+router.delete('/', wrap(async (req, res) => {
   await writeVisits([]);
   res.status(204).end();
-});
+}));
 
 // ─── GET /api/visits/pending ──────────────────────────────────────────────────
 router.get('/pending', (req, res) => {
@@ -112,7 +113,7 @@ router.get('/pending', (req, res) => {
 
 // ─── POST /api/visits/pending ─────────────────────────────────────────────────
 // Called by the extension for visits not matching the allow or block list.
-router.post('/pending', async (req, res) => {
+router.post('/pending', wrap(async (req, res) => {
   const { url, title, domain, dwellSeconds, visitedAt } = req.body;
   if (!url) return res.status(400).json({ error: 'url is required' });
 
@@ -133,11 +134,11 @@ router.post('/pending', async (req, res) => {
 
   await writeVisitsPending(pending);
   res.status(201).json({ ok: true });
-});
+}));
 
 // ─── POST /api/visits/pending/evaluate ───────────────────────────────────────
 // Run LLM evaluation on all pending visits. Kept items move to history.
-router.post('/pending/evaluate', async (req, res) => {
+router.post('/pending/evaluate', wrap(async (req, res) => {
   const pending = readVisitsPending();
   logger.log(`\n[POST /pending/evaluate] Parse History triggered — ${pending.length} pending visit(s)`);
   if (!pending.length) {
@@ -202,14 +203,14 @@ router.post('/pending/evaluate', async (req, res) => {
 
   logger.log(`[POST /pending/evaluate] Complete — kept: ${kept.length}, dropped: ${dropped.length}`);
   res.json({ kept: kept.length, dropped: dropped.length, results });
-});
+}));
 
 // ─── DELETE /api/visits/pending ───────────────────────────────────────────────
 // Discard the entire pending queue without evaluating.
-router.delete('/pending', async (req, res) => {
+router.delete('/pending', wrap(async (req, res) => {
   await writeVisitsPending([]);
   res.status(204).end();
-});
+}));
 
 // ─── GET /api/visits/filters ──────────────────────────────────────────────────
 router.get('/filters', (req, res) => {
@@ -218,7 +219,7 @@ router.get('/filters', (req, res) => {
 
 // ─── PUT /api/visits/filters ──────────────────────────────────────────────────
 // Body: { blockList, allowList, minDwellSeconds, evaluationPrompt }
-router.put('/filters', async (req, res) => {
+router.put('/filters', wrap(async (req, res) => {
   const { blockList, allowList, minDwellSeconds, evaluationPrompt } = req.body;
 
   // Normalise an entry: if someone pastes a full URL, extract just the hostname.
@@ -243,6 +244,6 @@ router.put('/filters', async (req, res) => {
   };
   await writeVisitFilters(filters);
   res.json(filters);
-});
+}));
 
 module.exports = router;
