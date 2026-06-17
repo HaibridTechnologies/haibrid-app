@@ -155,7 +155,7 @@ router.post('/pending/evaluate', wrap(async (req, res) => {
     results = await evaluateVisits(pending, prompt);
   } catch (err) {
     logger.error(`[POST /pending/evaluate] evaluateVisits threw:`, err.message);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Visit evaluation failed' });
   }
 
   // Build a lookup by id
