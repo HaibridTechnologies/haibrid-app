@@ -78,8 +78,8 @@ export default function TrackingPage() {
   const loadVisits = useCallback(async () => {
     setLoading(true)
     const [v, p] = await Promise.all([
-      getVisits({ days, q: search || undefined }).catch(() => []),
-      getPendingVisits().catch(() => []),
+      getVisits({ days, q: search || undefined }).catch((err) => { console.error('[TrackingPage] load visits failed:', err); return [] }),
+      getPendingVisits().catch((err) => { console.error('[TrackingPage] load pending failed:', err); return [] }),
     ])
     setVisits(v)
     setPending(p)
@@ -88,7 +88,7 @@ export default function TrackingPage() {
 
   useEffect(() => { loadVisits() }, [loadVisits])
 
-  useEffect(() => { getProjects().then(setAllProjects).catch(() => {}) }, [])
+  useEffect(() => { getProjects().then(setAllProjects).catch((err) => console.error('[TrackingPage] load projects failed:', err)) }, [])
 
   useEffect(() => {
     // Load saved filters; fall back to server config defaults if file doesn't exist yet
@@ -111,7 +111,7 @@ export default function TrackingPage() {
 
   const handleSaveFilters = async () => {
     setSaving(true)
-    await saveFilters(filters).catch(() => {})
+    await saveFilters(filters).catch((err) => console.error('[TrackingPage] save filters failed:', err))
     setSaving(false)
     setFilterSaved(true)
     clearTimeout(filterSavedTimerRef.current)
@@ -142,7 +142,9 @@ export default function TrackingPage() {
       setEvalResult({ kept: result.kept, dropped: result.dropped, items })
       setEvalExpanded(true)
       await loadVisits()
-    } catch {}
+    } catch (err) {
+      console.error('[TrackingPage] evaluation failed:', err)
+    }
     setEvaluating(false)
   }
 
@@ -157,7 +159,7 @@ export default function TrackingPage() {
         decision: item.kept ? 'keep' : 'drop',
         reason:   item.reason,
       }))
-    if (entries.length) await saveFeedback(entries).catch(() => {})
+    if (entries.length) await saveFeedback(entries).catch((err) => console.error('[TrackingPage] save feedback failed:', err))
     setSavingFeedback(false)
     setFeedbackSaved(true)
     clearTimeout(feedbackSavedTimerRef.current)
@@ -171,7 +173,9 @@ export default function TrackingPage() {
     try {
       await addLink(visit.url, '', selectedProjectId ? [selectedProjectId] : [])
       setSavedVisits(prev => new Set([...prev, visit.id]))
-    } catch {}
+    } catch (err) {
+      console.error('[TrackingPage] save to list failed:', err)
+    }
     setSavingVisit(null)
     setSavePopover(null)
   }
@@ -183,14 +187,14 @@ export default function TrackingPage() {
 
   const handleClearHistory = async () => {
     if (!confirmClear) { setConfirmClear(true); return }
-    await clearVisits().catch(() => {})
+    await clearVisits().catch((err) => console.error('[TrackingPage] clear history failed:', err))
     setVisits([])
     setConfirmClear(false)
   }
 
   const handleDiscardPending = async () => {
     if (!confirmDiscard) { setConfirmDiscard(true); return }
-    await discardPending().catch(() => {})
+    await discardPending().catch((err) => console.error('[TrackingPage] discard pending failed:', err))
     setPending([])
     setConfirmDiscard(false)
   }

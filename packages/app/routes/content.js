@@ -6,6 +6,7 @@ const router  = express.Router();
 
 const contentQueue              = require('../contentQueue');
 const { readLinks, writeLinks } = require('../lib/storage');
+const wrap = require('../lib/asyncHandler');
 
 // Share the content directory path with the queue so files land in one place
 const { content: contentConfig } = require('../lib/config');
@@ -20,7 +21,7 @@ const MAX_CHARS   = contentConfig.maxChars;
 //
 //   • no text — server must fetch the page itself; mark as pending
 //     and enqueue the link for background processing.
-router.post('/:id/content', async (req, res) => {
+router.post('/:id/content', wrap(async (req, res) => {
   const links = readLinks();
   const link  = links.find(l => l.id === req.params.id);
   if (!link) return res.status(404).json({ error: 'not found' });
@@ -49,7 +50,7 @@ router.post('/:id/content', async (req, res) => {
   await writeLinks(links);
   contentQueue.enqueue(link.id);
   res.json(link);
-});
+}));
 
 // ─── GET /api/links/:id/content ───────────────────────────────────────────────
 // Reads the saved plain-text file and returns it alongside the truncation flag.
@@ -66,7 +67,7 @@ router.get('/:id/content', (req, res) => {
 
 // ─── DELETE /api/links/:id/content ───────────────────────────────────────────
 // Removes the saved text file and resets all content-related fields on the link.
-router.delete('/:id/content', async (req, res) => {
+router.delete('/:id/content', wrap(async (req, res) => {
   const links = readLinks();
   const link  = links.find(l => l.id === req.params.id);
   if (!link) return res.status(404).json({ error: 'not found' });
@@ -80,6 +81,6 @@ router.delete('/:id/content', async (req, res) => {
   link.contentError     = null;
   await writeLinks(links);
   res.status(204).end();
-});
+}));
 
 module.exports = router;

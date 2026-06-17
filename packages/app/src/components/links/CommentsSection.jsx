@@ -13,17 +13,22 @@ import { fmtDate } from '../../utils/date'
 export default function CommentsSection({ link, onLinkUpdated }) {
   const [draft,   setDraft]   = useState('')
   const [saving,  setSaving]  = useState(false)
+  const [error,   setError]   = useState(null)
   const inputRef              = useRef(null)
 
   const handleAdd = async () => {
     const text = draft.trim()
     if (!text) return
     setSaving(true)
+    setError(null)
     try {
       const updated = await addComment(link.id, text)
       onLinkUpdated?.(updated)
       setDraft('')
-    } catch {}
+    } catch (err) {
+      console.error('[CommentsSection] add failed:', err)
+      setError('Could not add comment.')
+    }
     setSaving(false)
   }
 
@@ -34,7 +39,9 @@ export default function CommentsSection({ link, onLinkUpdated }) {
         ...link,
         comments: (link.comments || []).filter(c => c.id !== commentId),
       })
-    } catch {}
+    } catch (err) {
+      console.error('[CommentsSection] delete failed:', err)
+    }
   }
 
   const comments = link.comments || []
@@ -59,6 +66,7 @@ export default function CommentsSection({ link, onLinkUpdated }) {
         </div>
       ))}
 
+      {error && <div className="link-modal-comment-error" style={{ color: 'var(--danger)', fontSize: 12, marginBottom: 6 }}>{error}</div>}
       <div className="link-modal-comment-form">
         <input
           ref={inputRef}

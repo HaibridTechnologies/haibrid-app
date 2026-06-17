@@ -35,7 +35,9 @@ export default function LinkItem({ link, allProjects = [], onToggle, onDelete, o
     try {
       const updated = await updateLinkTitle(link.id, trimmed)
       onTitleChange?.(updated)
-    } catch {}
+    } catch (err) {
+      console.error('[LinkItem] rename failed:', err)
+    }
   }
 
   const cancel = () => {

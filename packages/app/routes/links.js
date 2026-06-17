@@ -11,6 +11,7 @@ const {
   readIndex, writeIndex, updateIndex,
 } = require('../lib/storage');
 const { extractArxivId, fetchCitationCount } = require('../lib/semanticScholar');
+const wrap = require('../lib/asyncHandler');
 
 // NOTE: normaliseUrl is intentionally duplicated in packages/extension/popup.js
 // because the extension runs in a browser context without access to Node modules.
@@ -76,7 +77,7 @@ router.get('/', (req, res) => {
 // ─── POST /api/links ──────────────────────────────────────────────────────────
 // Body: { url, title?, notes?, projects? }
 // If `title` is omitted the server fetches it from the page's <title> tag.
-router.post('/', async (req, res) => {
+router.post('/', wrap(async (req, res) => {
   const { url: rawUrl, title, notes, projects } = req.body;
   if (!rawUrl) return res.status(400).json({ error: 'url is required' });
 
@@ -117,11 +118,11 @@ router.post('/', async (req, res) => {
   }
 
   res.status(201).json(link);
-});
+}));
 
 // ─── PATCH /api/links/:id ─────────────────────────────────────────────────────
 // Update mutable fields: title and/or notes.
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', wrap(async (req, res) => {
   const links = readLinks();
   const link  = links.find(l => l.id === req.params.id);
   if (!link) return res.status(404).json({ error: 'not found' });
@@ -131,10 +132,10 @@ router.patch('/:id', async (req, res) => {
   if (notes !== undefined) link.notes = notes;
   await writeLinks(links);
   res.json(link);
-});
+}));
 
 // ─── PATCH /api/links/:id/toggle ─────────────────────────────────────────────
-router.patch('/:id/toggle', async (req, res) => {
+router.patch('/:id/toggle', wrap(async (req, res) => {
   const links = readLinks();
   const link  = links.find(l => l.id === req.params.id);
   if (!link) return res.status(404).json({ error: 'not found' });
@@ -142,10 +143,10 @@ router.patch('/:id/toggle', async (req, res) => {
   link.read = !link.read;
   await writeLinks(links);
   res.json(link);
-});
+}));
 
 // ─── PATCH /api/links/:id/projects ───────────────────────────────────────────
-router.patch('/:id/projects', async (req, res) => {
+router.patch('/:id/projects', wrap(async (req, res) => {
   const { projects } = req.body;
   if (!Array.isArray(projects)) return res.status(400).json({ error: 'projects must be an array' });
 
@@ -159,10 +160,10 @@ router.patch('/:id/projects', async (req, res) => {
   await writeLinks(links);
   await writeIndex(index);
   res.json(link);
-});
+}));
 
 // ─── POST /api/links/:id/citations/refresh ───────────────────────────────────
-router.post('/:id/citations/refresh', async (req, res) => {
+router.post('/:id/citations/refresh', wrap(async (req, res) => {
   const links = readLinks();
   const link  = links.find(l => l.id === req.params.id);
   if (!link) return res.status(404).json({ error: 'not found' });
@@ -177,14 +178,14 @@ router.post('/:id/citations/refresh', async (req, res) => {
   link.citationCountAt = new Date().toISOString();
   await writeLinks(links);
   res.json(link);
-});
+}));
 
 // ─── POST /api/links/dwell ────────────────────────────────────────────────────
 // Called by the extension background worker whenever a saved page is visited.
 // Accumulates dwell time on the link so it can be ranked by engagement.
 // Body: { url, dwellSeconds }
 // No-op (200 ok:false) if the URL is not a saved link — caller can ignore.
-router.post('/dwell', async (req, res) => {
+router.post('/dwell', wrap(async (req, res) => {
   const { url: rawUrl, dwellSeconds } = req.body;
   if (!rawUrl || !Number.isFinite(Number(dwellSeconds)) || dwellSeconds <= 0) {
     return res.status(400).json({ error: 'url and positive dwellSeconds are required' });
@@ -198,7 +199,7 @@ router.post('/dwell', async (req, res) => {
   link.totalDwellSeconds = (link.totalDwellSeconds || 0) + Math.round(dwellSeconds);
   await writeLinks(links);
   res.json({ ok: true, totalDwellSeconds: link.totalDwellSeconds });
-});
+}));
 
 // ─── GET /api/links/export ───────────────────────────────────────────────────
 router.get('/export', (req, res) => {
@@ -216,7 +217,7 @@ router.get('/export', (req, res) => {
 //   - Existing URL + project tags → merge the project tags onto the existing link
 //   - Existing URL, no project tags → skip
 // Returns { added, tagged, skipped } counts.
-router.post('/import', async (req, res) => {
+router.post('/import', wrap(async (req, res) => {
   const incoming = req.body?.links;
   if (!Array.isArray(incoming)) return res.status(400).json({ error: 'links array required' });
 
@@ -268,10 +269,10 @@ router.post('/import', async (req, res) => {
   }
 
   res.json({ added, tagged, skipped });
-});
+}));
 
 // ─── POST /api/links/:id/comments ────────────────────────────────────────────
-router.post('/:id/comments', async (req, res) => {
+router.post('/:id/comments', wrap(async (req, res) => {
   const { text } = req.body;
   if (!text || !text.trim()) return res.status(400).json({ error: 'text is required' });
 
@@ -283,10 +284,10 @@ router.post('/:id/comments', async (req, res) => {
   link.comments.push({ id: crypto.randomUUID(), text: text.trim(), createdAt: new Date().toISOString() });
   await writeLinks(links);
   res.json(link);
-});
+}));
 
 // ─── DELETE /api/links/:id/comments/:commentId ───────────────────────────────
-router.delete('/:id/comments/:commentId', async (req, res) => {
+router.delete('/:id/comments/:commentId', wrap(async (req, res) => {
   const links = readLinks();
   const link  = links.find(l => l.id === req.params.id);
   if (!link) return res.status(404).json({ error: 'not found' });
@@ -296,7 +297,7 @@ router.delete('/:id/comments/:commentId', async (req, res) => {
   if (link.comments.length === before) return res.status(404).json({ error: 'comment not found' });
   await writeLinks(links);
   res.status(204).end();
-});
+}));
 
 // ─── GET /api/links/:id ──────────────────────────────────────────────────────
 router.get('/:id', (req, res) => {
@@ -307,7 +308,7 @@ router.get('/:id', (req, res) => {
 });
 
 // ─── DELETE /api/links/:id ────────────────────────────────────────────────────
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', wrap(async (req, res) => {
   let links  = readLinks();
   const link = links.find(l => l.id === req.params.id);
   if (!link) return res.status(404).json({ error: 'not found' });
@@ -326,6 +327,6 @@ router.delete('/:id', async (req, res) => {
   if (fs.existsSync(pdfFile))     fs.unlinkSync(pdfFile);
 
   res.status(204).end();
-});
+}));
 
 module.exports = router;

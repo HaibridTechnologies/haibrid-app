@@ -33,7 +33,7 @@ export default function ProjectsPage({ onOpenProject }) {
     fetch('/api/links?unassigned=true')
       .then(r => r.json())
       .then(links => setUnassignedCount(links.length))
-      .catch(() => {})
+      .catch((err) => console.error('[ProjectsPage] fetch unassigned count failed:', err))
   }, [])
 
   // ─── New project dialog state ────────────────────────────────────────────────

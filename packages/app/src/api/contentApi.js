@@ -5,9 +5,16 @@
 
 const BASE = '/api/links';
 
+async function request(url, options = {}) {
+  const res = await fetch(url, options)
+  if (!res.ok) throw new Error(`${options.method || 'GET'} ${url} → ${res.status}`)
+  if (res.status === 204) return null
+  return res.json()
+}
+
 /** Fetch all links that have a content record (any status other than null/none). */
 export const getContentLinks = () =>
-  fetch(`${BASE}?hasContent=true`).then(r => r.json());
+  request(`${BASE}?hasContent=true`);
 
 /**
  * Trigger content saving for a link.
@@ -22,20 +29,20 @@ export const getContentLinks = () =>
  * @param {string|null} text   - Pre-extracted plain text from the extension
  */
 export const saveContent = (linkId, text = null) =>
-  fetch(`${BASE}/${linkId}/content`, {
+  request(`${BASE}/${linkId}/content`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify(text ? { text } : {}),
-  }).then(r => r.json());
+  });
 
 /** Fetch the raw saved plain-text and truncation flag for a link. */
 export const getContent = (linkId) =>
-  fetch(`${BASE}/${linkId}/content`).then(r => r.json());
+  request(`${BASE}/${linkId}/content`);
 
 /** Remove saved content for a link and reset all content-related fields. */
 export const deleteContent = (linkId) =>
-  fetch(`${BASE}/${linkId}/content`, { method: 'DELETE' });
+  request(`${BASE}/${linkId}/content`, { method: 'DELETE' });
 
 /** Poll the server-side content queue for debugging / status display. */
 export const getQueueStatus = () =>
-  fetch('/api/content/queue').then(r => r.json());
+  request('/api/content/queue');

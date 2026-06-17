@@ -73,13 +73,19 @@ export function useLinks({ projectId = null, mode = 'reading-list', readFilter =
   const add = useCallback(async (url, notes, selectedProjects = []) => {
     if (!url) return
     setIsAdding(true)
-    // Prepend the current project so links added inside a project view are tagged
-    const projects = (projectId && !selectedProjects.includes(projectId))
-      ? [projectId, ...selectedProjects]
-      : selectedProjects
-    await api.addLink(url, notes, projects)
-    await load()
-    setIsAdding(false)
+    try {
+      // Prepend the current project so links added inside a project view are tagged
+      const projects = (projectId && !selectedProjects.includes(projectId))
+        ? [projectId, ...selectedProjects]
+        : selectedProjects
+      await api.addLink(url, notes, projects)
+      await load()
+    } catch (err) {
+      console.error('[useLinks] add failed:', err)
+      throw err
+    } finally {
+      setIsAdding(false)
+    }
   }, [load, projectId])
 
   /**
@@ -95,7 +101,8 @@ export function useLinks({ projectId = null, mode = 'reading-list', readFilter =
     setAllLinks(prev => prev.filter(l => l.id !== link.id)) // optimistic remove
 
     // Commit on the server; restore locally on failure
-    api.toggleLink(link.id).catch(() => {
+    api.toggleLink(link.id).catch((err) => {
+      console.error('[useLinks] toggle failed:', err)
       setAllLinks(prev => [link, ...prev])
     })
 
@@ -120,7 +127,8 @@ export function useLinks({ projectId = null, mode = 'reading-list', readFilter =
     setAllLinks(prev => prev.filter(l => l.id !== link.id)) // optimistic remove
 
     // Commit delete on the server; restore locally on failure
-    api.deleteLink(link.id).catch(() => {
+    api.deleteLink(link.id).catch((err) => {
+      console.error('[useLinks] delete failed:', err)
       setAllLinks(prev => [link, ...prev])
     })
 
@@ -143,7 +151,8 @@ export function useLinks({ projectId = null, mode = 'reading-list', readFilter =
    */
   const updateProjects = useCallback((link, projects) => {
     setAllLinks(prev => prev.map(l => l.id === link.id ? { ...l, projects } : l))
-    api.updateLinkProjects(link.id, projects).catch(() => {
+    api.updateLinkProjects(link.id, projects).catch((err) => {
+      console.error('[useLinks] updateProjects failed:', err)
       setAllLinks(prev => prev.map(l => l.id === link.id ? link : l))
     })
   }, [])
