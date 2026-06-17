@@ -131,7 +131,8 @@ Example: ["Question 1?", "Question 2?", "Question 3?", "Question 4?", "Question 
     const suggestions = JSON.parse(raw);
     res.json({ suggestions: Array.isArray(suggestions) ? suggestions : [] });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[suggest-questions]', err);
+    res.status(500).json({ error: 'Failed to generate suggestions' });
   }
 }));
 

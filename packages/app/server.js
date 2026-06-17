@@ -1,6 +1,7 @@
 'use strict';
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
 const express = require('express');
+const helmet  = require('helmet');
 const fs      = require('fs');
 const path    = require('path');
 const contentQueue = require('./contentQueue');
@@ -11,14 +12,33 @@ const PORT = 3000;
 const DIST = path.join(__dirname, 'dist');
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
+
+// Security headers (XSS filter, hide X-Powered-By, etc.)
+app.use(helmet({
+  contentSecurityPolicy: false,   // CSP managed by Vite / the SPA
+  crossOriginEmbedderPolicy: false,
+}));
+
 app.use(express.json({ limit: '15mb' }));
 
-// Allow the browser extension (chrome-extension://) and Vite dev server to call the API
+// CORS — restrict to the browser extension and the local Vite dev server.
+// chrome-extension:// origins are sent verbatim by Chrome; we also allow the
+// local dev server so hot-reload proxying keeps working.
+const ALLOWED_ORIGINS = new Set([
+  'http://localhost:5173',   // Vite dev server
+  'http://localhost:3000',   // production self-origin
+]);
+
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin',  '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  const origin = req.headers.origin || '';
+  // chrome-extension:// origins are always trusted (the extension popup)
+  const allowed = ALLOWED_ORIGINS.has(origin) || origin.startsWith('chrome-extension://');
+  if (allowed) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(allowed ? 200 : 403);
   next();
 });
 
@@ -45,11 +65,16 @@ app.get('/api/config', (req, res) => {
 });
 
 // Extension debug log — writes timestamped lines to ext-debug.log
-const EXT_LOG_DIR = path.join(__dirname, 'logs');
-const EXT_LOG     = path.join(EXT_LOG_DIR, 'ext-debug.log');
+const EXT_LOG_DIR     = path.join(__dirname, 'logs');
+const EXT_LOG         = path.join(EXT_LOG_DIR, 'ext-debug.log');
+const EXT_LOG_LEVELS  = new Set(['debug', 'info', 'warn', 'error']);
+const EXT_LOG_MAX_LEN = 2000;
 app.post('/api/ext-log', (req, res) => {
-  const { level = 'info', msg = '' } = req.body || {};
-  const line = `[${new Date().toISOString()}] [${level}] ${msg}\n`;
+  const { level: rawLevel, msg: rawMsg } = req.body || {};
+  const level = EXT_LOG_LEVELS.has(rawLevel) ? rawLevel : 'info';
+  // Strip control characters and cap length to prevent log injection / abuse
+  const msg   = String(rawMsg || '').replace(/[\r\n]/g, ' ').slice(0, EXT_LOG_MAX_LEN);
+  const line  = `[${new Date().toISOString()}] [${level}] ${msg}\n`;
   try {
     if (!fs.existsSync(EXT_LOG_DIR)) fs.mkdirSync(EXT_LOG_DIR, { recursive: true });
     fs.appendFileSync(EXT_LOG, line);
@@ -83,7 +108,8 @@ if (fs.existsSync(DIST)) {
 app.use((err, _req, res, _next) => {
   logger.error(err);
   const status = err.status || 500;
-  res.status(status).json({ error: err.message || 'Internal server error' });
+  const msg = status < 500 ? (err.message || 'Request error') : 'Internal server error';
+  res.status(status).json({ error: msg });
 });
 
 // ─── Start ───────────────────────────────────────────────────────────────────

@@ -11,6 +11,8 @@ const logger   = require('../lib/logger');
 const router = express.Router();
 const CONTENT_DIR = path.join(__dirname, '..', 'content');
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Max chars of page content to include in context (~12k tokens in Haiku)
 const MAX_CONTENT_CHARS = 50_000;
 // Per-link char budget when building multi-doc project context
@@ -253,6 +255,14 @@ router.post('/', async (req, res) => {
 
   if (!message || typeof message !== 'string') {
     return res.status(400).json({ error: 'message is required' });
+  }
+
+  // Validate IDs to prevent path traversal via crafted linkId/projectId
+  if (linkId && !UUID_RE.test(linkId)) {
+    return res.status(400).json({ error: 'invalid linkId' });
+  }
+  if (projectId && !UUID_RE.test(projectId)) {
+    return res.status(400).json({ error: 'invalid projectId' });
   }
 
   let pageContent  = null;
