@@ -2,7 +2,7 @@
 const fs   = require('fs');
 const path = require('path');
 const { fetchHtml }             = require('./lib/http');
-const { readLinks, writeLinks } = require('./lib/storage');
+const { readLinks, writeLinks, modifyLinks } = require('./lib/storage');
 const htmlToText                = require('./lib/htmlToText');
 const { getHandler }            = require('./lib/siteHandlers');
 const { summarize }             = require('./lib/summarize');
@@ -37,12 +37,12 @@ let processing = false;
  * @returns {Object|null} - The updated link, or null if the id was not found
  */
 async function setLinkContent(linkId, patch) {
-  const links = readLinks();
-  const link  = links.find(l => l.id === linkId);
-  if (!link) return null;
-  Object.assign(link, patch);
-  await writeLinks(links);
-  return link;
+  return modifyLinks(links => {
+    const link = links.find(l => l.id === linkId);
+    if (!link) return null;
+    Object.assign(link, patch);
+    return link;
+  });
 }
 
 // ─── Processing ───────────────────────────────────────────────────────────────
@@ -288,37 +288,33 @@ function isProcessing() { return processing; }
  * @returns {{ requeued: string[], total: number }}
  */
 async function reconcile() {
-  const links    = readLinks();
   const requeued = [];
 
-  for (const link of links) {
-    if (!link.contentStatus || link.contentStatus === 'failed') continue;
+  await modifyLinks(links => {
+    for (const link of links) {
+      if (!link.contentStatus || link.contentStatus === 'failed') continue;
 
-    if (link.contentStatus === 'pending') {
-      // Stuck from a previous run — just re-enqueue
-      enqueue(link.id);
-      requeued.push(link.id);
-      continue;
-    }
-
-    if (link.contentStatus === 'parsed') {
-      const filePath = path.join(CONTENT_DIR, `${link.id}.txt`);
-      if (!fs.existsSync(filePath)) {
-        // File missing — reset status and re-queue
-        link.contentStatus   = 'pending';
-        link.contentParsedAt = null;
-        link.contentError    = null;
+      if (link.contentStatus === 'pending') {
         enqueue(link.id);
         requeued.push(link.id);
+        continue;
+      }
+
+      if (link.contentStatus === 'parsed') {
+        const filePath = path.join(CONTENT_DIR, `${link.id}.txt`);
+        if (!fs.existsSync(filePath)) {
+          link.contentStatus   = 'pending';
+          link.contentParsedAt = null;
+          link.contentError    = null;
+          enqueue(link.id);
+          requeued.push(link.id);
+        }
       }
     }
-  }
+  });
 
-  // Persist any status resets in one write
-  if (requeued.length > 0) await writeLinks(links);
-
-  console.log(`[reconcile] checked ${links.length} links, re-queued ${requeued.length}`);
-  return { requeued, total: links.length };
+  console.log(`[reconcile] checked links, re-queued ${requeued.length}`);
+  return { requeued, total: requeued.length };
 }
 
 module.exports = { enqueue, getQueue, isProcessing, reconcile, CONTENT_DIR, PDF_DIR };

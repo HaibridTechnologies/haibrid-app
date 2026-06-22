@@ -6,9 +6,9 @@ const contentQueue = require('../contentQueue');
 const semanticScholar = require('../lib/semanticScholar');
 
 const {
-  readLinks, writeLinks,
-  readIndex, writeIndex,
-  readProjects, writeProjects,
+  readLinks, writeLinks, modifyLinks,
+  readIndex, writeIndex, modifyIndex,
+  readProjects, writeProjects, modifyProjects,
 } = require('../lib/storage');
 const wrap = require('../lib/asyncHandler');
 
@@ -24,30 +24,32 @@ router.post('/', wrap(async (req, res) => {
   const { name, description, color } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
 
-  const projects = readProjects();
-  const project  = {
-    id:          crypto.randomUUID(),
-    name:        name.trim(),
-    description: description || '',
-    color:       color || '#2563eb',
-    createdAt:   new Date().toISOString(),
-  };
-  projects.unshift(project);
-  await writeProjects(projects);
+  const project = await modifyProjects(projects => {
+    const p = {
+      id:          crypto.randomUUID(),
+      name:        name.trim(),
+      description: description || '',
+      color:       color || '#2563eb',
+      createdAt:   new Date().toISOString(),
+    };
+    projects.unshift(p);
+    return p;
+  });
   res.status(201).json({ ...project, linkCount: 0 });
 }));
 
 // ─── PATCH /api/projects/:id ──────────────────────────────────────────────────
 router.patch('/:id', wrap(async (req, res) => {
-  const projects = readProjects();
-  const project  = projects.find(p => p.id === req.params.id);
-  if (!project) return res.status(404).json({ error: 'not found' });
-
   const { name, description, color } = req.body;
-  if (name        !== undefined) project.name        = name.trim();
-  if (description !== undefined) project.description = description;
-  if (color       !== undefined) project.color       = color;
-  await writeProjects(projects);
+  const project = await modifyProjects(projects => {
+    const p = projects.find(p => p.id === req.params.id);
+    if (!p) return null;
+    if (name        !== undefined) p.name        = name.trim();
+    if (description !== undefined) p.description = description;
+    if (color       !== undefined) p.color       = color;
+    return p;
+  });
+  if (!project) return res.status(404).json({ error: 'not found' });
 
   const index = readIndex();
   res.json({ ...project, linkCount: (index[project.id] || []).length });
@@ -56,25 +58,26 @@ router.patch('/:id', wrap(async (req, res) => {
 // ─── DELETE /api/projects/:id ─────────────────────────────────────────────────
 // Cascade: removes the project from the index and from every link's projects array.
 router.delete('/:id', wrap(async (req, res) => {
-  let projects = readProjects();
-  const before = projects.length;
-  projects = projects.filter(p => p.id !== req.params.id);
-  if (projects.length === before) return res.status(404).json({ error: 'not found' });
-  await writeProjects(projects);
+  const pid = req.params.id;
+  const found = await modifyProjects(projects => {
+    const idx = projects.findIndex(p => p.id === pid);
+    if (idx === -1) return false;
+    projects.splice(idx, 1);
+    return true;
+  });
+  if (!found) return res.status(404).json({ error: 'not found' });
 
-  const index = readIndex();
-  delete index[req.params.id];
-  await writeIndex(index);
+  await modifyIndex(index => {
+    delete index[pid];
+  });
 
-  const links = readLinks();
-  let changed = false;
-  links.forEach(link => {
-    if (link.projects && link.projects.includes(req.params.id)) {
-      link.projects = link.projects.filter(id => id !== req.params.id);
-      changed = true;
+  await modifyLinks(links => {
+    for (const link of links) {
+      if (link.projects && link.projects.includes(pid)) {
+        link.projects = link.projects.filter(id => id !== pid);
+      }
     }
   });
-  if (changed) await writeLinks(links);
 
   res.status(204).end();
 }));
@@ -168,11 +171,12 @@ router.post('/:id/load-content', wrap(async (req, res) => {
     contentQueue.enqueue(link.id);
   }
   if (unloaded.length > 0) {
-    // Persist pending status immediately so UI polls reflect it
-    const allLinks = readLinks();
-    const byId = Object.fromEntries(unloaded.map(l => [l.id, l]));
-    allLinks.forEach(l => { if (byId[l.id]) l.contentStatus = 'pending'; });
-    await writeLinks(allLinks);
+    const unloadedIds = new Set(unloaded.map(l => l.id));
+    await modifyLinks(links => {
+      for (const l of links) {
+        if (unloadedIds.has(l.id)) l.contentStatus = 'pending';
+      }
+    });
   }
 
   // Refresh citations for arXiv links (fire-and-forget — non-blocking)
@@ -182,12 +186,12 @@ router.post('/:id/load-content', wrap(async (req, res) => {
     semanticScholar.fetchCitationCount(arxivId)
       .then(async count => {
         if (count == null) return;
-        const all  = readLinks();
-        const l    = all.find(x => x.id === link.id);
-        if (!l) return;
-        l.citationCount   = count;
-        l.citationCountAt = new Date().toISOString();
-        await writeLinks(all);
+        await modifyLinks(links => {
+          const l = links.find(x => x.id === link.id);
+          if (!l) return;
+          l.citationCount   = count;
+          l.citationCountAt = new Date().toISOString();
+        });
       })
       .catch(() => {});
   }

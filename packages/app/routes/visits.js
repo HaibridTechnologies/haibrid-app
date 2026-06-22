@@ -3,12 +3,12 @@ const express = require('express');
 const router  = express.Router();
 const logger  = require('../lib/logger');
 const {
-  readVisits, writeVisits,
-  readVisitsPending, writeVisitsPending,
+  readVisits, writeVisits, modifyVisits,
+  readVisitsPending, writeVisitsPending, modifyVisitsPending,
   readVisitFilters, writeVisitFilters,
+  readLinks, writeLinks, modifyLinks,
 } = require('../lib/storage');
 const { evaluateVisits } = require('../lib/evaluateVisits');
-const { readLinks, writeLinks } = require('../lib/storage');
 const wrap = require('../lib/asyncHandler');
 const { visits: visitsConfig } = require('../lib/config');
 
@@ -76,25 +76,26 @@ router.post('/', wrap(async (req, res) => {
   const { url, title, domain, dwellSeconds, visitedAt } = req.body;
   if (!url) return res.status(400).json({ error: 'url is required' });
 
-  let visits = readVisits();
-  visits.unshift({
-    id:           require('crypto').randomUUID(),
-    url,
-    title:        title || '',
-    domain:       domain || '',
-    dwellSeconds: Number(dwellSeconds) || 0,
-    visitedAt:    visitedAt || new Date().toISOString(),
+  await modifyVisits(visits => {
+    visits.unshift({
+      id:           require('crypto').randomUUID(),
+      url,
+      title:        title || '',
+      domain:       domain || '',
+      dwellSeconds: Number(dwellSeconds) || 0,
+      visitedAt:    visitedAt || new Date().toISOString(),
+    });
   });
-
-  await writeVisits(visits);
   res.status(201).json({ ok: true });
 }));
 
 // ─── DELETE /api/visits/:id ───────────────────────────────────────────────────
 // Delete a single visit by id.
 router.delete('/:id', wrap(async (req, res) => {
-  const visits = readVisits().filter(v => v.id !== req.params.id);
-  await writeVisits(visits);
+  await modifyVisits(visits => {
+    const idx = visits.findIndex(v => v.id === req.params.id);
+    if (idx !== -1) visits.splice(idx, 1);
+  });
   res.status(204).end();
 }));
 
@@ -117,22 +118,20 @@ router.post('/pending', wrap(async (req, res) => {
   const { url, title, domain, dwellSeconds, visitedAt } = req.body;
   if (!url) return res.status(400).json({ error: 'url is required' });
 
-  const pending = readVisitsPending();
-
-  // Avoid duplicating the same URL if it's already in the queue
-  if (pending.some(v => v.url === url)) return res.status(200).json({ ok: true, duplicate: true });
-
-  pending.unshift({
-    id:          require('crypto').randomUUID(),
-    url,
-    title:       title || '',
-    domain:      domain || '',
-    dwellSeconds: Number(dwellSeconds) || 0,
-    visitedAt:   visitedAt || new Date().toISOString(),
-    queuedAt:    new Date().toISOString(),
+  const duplicate = await modifyVisitsPending(pending => {
+    if (pending.some(v => v.url === url)) return true;
+    pending.unshift({
+      id:          require('crypto').randomUUID(),
+      url,
+      title:       title || '',
+      domain:      domain || '',
+      dwellSeconds: Number(dwellSeconds) || 0,
+      visitedAt:   visitedAt || new Date().toISOString(),
+      queuedAt:    new Date().toISOString(),
+    });
+    return false;
   });
-
-  await writeVisitsPending(pending);
+  if (duplicate) return res.status(200).json({ ok: true, duplicate: true });
   res.status(201).json({ ok: true });
 }));
 
@@ -174,29 +173,23 @@ router.post('/pending/evaluate', wrap(async (req, res) => {
   }
 
   // Move kept visits to confirmed history, then prune and deduplicate in one pass
-  {
-    let visits = readVisits();
-    visits = pruneOldVisits([...kept, ...visits]);
-    visits = deduplicateVisits(visits);
-    await writeVisits(visits);
-  }
+  await modifyVisits(visits => {
+    const merged = pruneOldVisits([...kept, ...visits]);
+    const deduped = deduplicateVisits(merged);
+    visits.length = 0;
+    visits.push(...deduped);
+  });
 
-  // ── Accumulate dwell time on matching saved links ─────────────────────────
-  // All pending visits (kept AND dropped) contribute to dwell — the LLM
-  // decision is about history relevance, not engagement.
-  {
-    const links = readLinks();
+  // Accumulate dwell time on matching saved links
+  await modifyLinks(links => {
     const urlMap = new Map(links.map(l => [l.url, l]));
-    let changed = false;
     for (const visit of pending) {
       const link = urlMap.get(visit.url);
       if (!link || !visit.dwellSeconds) continue;
       link.totalDwellSeconds = (link.totalDwellSeconds || 0) + Math.round(visit.dwellSeconds);
-      changed = true;
     }
-    if (changed) await writeLinks(links);
     logger.log(`[POST /pending/evaluate] Dwell updated for ${pending.filter(v => urlMap.has(v.url)).length} saved link(s)`);
-  }
+  });
 
   // Clear the pending queue
   await writeVisitsPending([]);

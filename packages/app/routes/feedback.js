@@ -2,7 +2,7 @@
 
 const express = require('express');
 const router  = express.Router();
-const { readFeedback, writeFeedback } = require('../lib/storage');
+const { readFeedback, writeFeedback, modifyFeedback } = require('../lib/storage');
 const wrap = require('../lib/asyncHandler');
 
 /**
@@ -28,22 +28,20 @@ router.post('/', wrap(async (req, res) => {
   const items = req.body;
   if (!Array.isArray(items)) return res.status(400).json({ error: 'body must be an array' });
 
-  const all = readFeedback();
-  const now = new Date().toISOString();
-
-  for (const { url, comment, decision, reason } of items) {
-    if (!url || !comment?.trim()) continue;
-    if (!all[url]) all[url] = [];
-    all[url].unshift({
-      id:        Date.now().toString() + Math.random().toString(36).slice(2, 6),
-      comment:   comment.trim(),
-      decision,
-      reason,
-      createdAt: now,
-    });
-  }
-
-  await writeFeedback(all);
+  await modifyFeedback(all => {
+    const now = new Date().toISOString();
+    for (const { url, comment, decision, reason } of items) {
+      if (!url || !comment?.trim()) continue;
+      if (!all[url]) all[url] = [];
+      all[url].unshift({
+        id:        Date.now().toString() + Math.random().toString(36).slice(2, 6),
+        comment:   comment.trim(),
+        decision,
+        reason,
+        createdAt: now,
+      });
+    }
+  });
   res.status(201).json({ ok: true });
 }));
 
